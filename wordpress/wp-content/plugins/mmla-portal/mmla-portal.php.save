@@ -1,0 +1,144 @@
+<?php
+/*
+Plugin Name: MMLA Portal
+Description: Custom portal for Mobile Medical LA
+Version: 1.0
+Author: Nikolay Yefimov
+*/
+
+// Load .env manually
+$dotenv = parse_ini_file(__DIR__ . '/../../.env');
+
+// Include auth functions
+require_once __DIR__ . '/includes/auth.php';
+
+// Register portal pages
+function mmla_portal_register_pages() {
+    add_rewrite_rule('^portal/?$', 'index.php?mmla_portal_page=home', 'top');
+    add_rewrite_rule('^portal/login/?$', 'index.php?mmla_portal_page=login', 'top');
+    add_rewrite_rule('^portal/register/?$', 'index.php?mmla_portal_page=register', 'top');
+    add_rewrite_rule('^portal/reset-password/?$', 'index.php?mmla_portal_page=reset-password', 'top');
+    add_rewrite_rule('^portal/dashboard/?$', 'index.php?mmla_portal_page=dashboard', 'top');
+    add_rewrite_rule('^portal/resources/?$', 'index.php?mmla_portal_page=resources', 'top');
+    add_rewrite_rule('^portal/profile/?$', 'index.php?mmla_portal_page=profile', 'top');
+}
+add_action('init', 'mmla_portal_register_pages');
+
+function mmla_portal_query_vars($vars) {
+    $vars[] = 'mmla_portal_page';
+    return $vars;
+}
+add_filter('query_vars', 'mmla_portal_query_vars');
+
+function mmla_portal_template($template) {
+    if ($page = get_query_var('mmla_portal_page')) {
+        $file = plugin_dir_path(__FILE__) . "pages/$page.php";
+        if (file_exists($file)) return $file;
+    }
+    return $template;
+}
+add_filter('template_include', 'mmla_portal_template');
+
+// Enqueue React assets
+function mmla_portal_enqueue_assets() {
+    if (get_query_var('mmla_portal_page')) {
+        wp_enqueue_script('mmla-portal-js', plugins_url('assets/portal.js', __FILE__), [], '1.0', true);
+        wp_enqueue_style('mmla-portal-css', plugins_url('assets/portal.css', __FILE__), [], '1.0');
+    }
+}
+add_action('wp_enqueue_scripts', 'mmla_portal_enqueue_assets');
+
+// REST API Endpoints
+function mmla_portal_register_rest_routes() {
+    // Register user
+    register_rest_route('mmla/v1', '/register', [
+        'methods' => 'POST',
+        'callback' => 'mmla_portal_handle_register',
+        'permission_callback' => '__return_true', // Public for now
+    ]);
+
+    // Login user
+    register_rest_route('mmla/v1', '/login', [
+        'methods' => 'POST',
+        'callback' => 'mmla_portal_handle_login',
+        'permission_callback' => '__return_true',
+    ]);
+
+    // Verify email
+    register_rest_route('mmla/v1', '/verify', [
+        'methods' => 'GET',
+        'callback' => 'mmla_portal_handle_verify',
+        'permission_callback' => '__return_true',
+    ]);
+}
+add_action('rest_api_init', 'mmla_portal_register_rest_routes');
+
+function mmla_portal_handle_register($request) {
+    $params = $request->get_params();
+    $data = [
+        'username' => sanitize_user($params['username']),
+        'email' => sanitize_email($params['email']),
+        'password' => $params['password'],
+        'specialty' => sanitize_text_field($params['specialty']),
+        'license_number' => sanitize_text_field($params['license_number']),
+    ];
+
+    $user_id = mmla_portal_register_user($data);
+    if (is_wp_error($user_id)) {
+        return new WP_Error('registration_failed', $user_id->get_error_message(), ['status' => 400]);
+    }
+
+    // Generate verification token
+    $token = bin2hex(random_bytes(16));
+    update_user_meta($user_id, 'verification_token', $token);
+
+    // Send verification email
+    $verify_url = site_url("/wp-json/mmla/v1/verify?token=$token&user_id=$user_id");
+    $subject = 'Verify Your Mobile Medical LA Account';
+    $message = "Click here to verify your email: $verify_url";
+    wp_mail($data['email'], $subject, $message);
+
+    return ['message' => 'Registration successful. Check your email to verify.', 'user_id' => $user_id];
+}
+
+function mmla_portal_handle_login($request) {
+    $params = $request->get_params();
+    $username = sanitize_user($params['username']);
+    $password = $params['password'];
+
+    $logged_in = mmla_portal_login($username, $password);
+    if (!$logged_in) {
+        return new WP_Error('login_failed', 'Invalid credentials', ['status' => 401]);
+    }
+
+    global $wpdb;
+    $user = get_user_by('login', $username);
+    $verified = $wpdb->get_var($wpdb->prepare(
+        "SELECT verified FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d",
+        $user->ID
+    ));
+
+    if (!$verified) {
+        return new WP_Error('unverified', 'Please verify your email first', ['status' => 403]);
+    }
+
+    return ['message' => 'Login successful', 'user_id' => $user->ID];
+}
+
+function mmla_portal_handle_verify($request) {
+    $token = sanitize_text_field($request['token']);
+    $user_id = absint($request['user_id']);
+
+    $stored_token = get_user_meta($user_id, 'verification_token', true);
+    if ($token === $stored_token) {
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->prefix . 'portal_users',
+            ['verified' => true],
+            ['wp_user_id' => $user_id]
+        );
+        delete_user_meta($user_id, 'verification_token');
+        return ['message' => 'Email verified. You can now log in.'];
+    }
+    return new WP_Error('invalid_token', 'Invalid or expired token', ['status' => 400]);
+}

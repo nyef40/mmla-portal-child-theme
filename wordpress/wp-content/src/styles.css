@@ -1,0 +1,125 @@
+.portal-register, .portal-login {
+    max-width: 400px;
+    margin: 20px auto;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+label {
+    display: block;
+    margin-top: 10px;
+    font-weight: bold;
+}
+input {
+    display: block;
+    width: 100%;
+    margin: 5px 0 10px;
+    padding: 8px;
+    box-sizing: border-box;
+}
+button {
+    background-color: #007bff;
+    color: white;
+    padding: 10px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    width: 100%;
+}
+button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+button:hover:not(:disabled) {
+    background-color: #0056b3;
+}
+p {
+    margin-top: 10px;
+    color: #333;
+}
+.portal-dashboard {
+    max-width: 400px;
+    margin: 20px auto;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+a {
+    display: inline-block;
+    margin-top: 10px;
+    color: #007bff;
+    text-decoration: none;
+}
+a:hover {
+    text-decoration: underline;
+}
+.portal-home {
+    max-width: 600px;
+    margin: 20px auto;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    text-align: center;
+}
+.portal-home h2 {
+    margin-bottom: 10px;
+}
+.portal-home p {
+    margin: 10px 0;
+}
+.portal-home a {
+    color: #007bff;
+    text-decoration: none;
+    margin: 0 10px;
+}
+.portal-home a:hover {
+    text-decoration: underline;
+}
+.portal-home span {
+    color: #333;
+}
+.portal-app {
+    font-family: Arial, sans-serif;
+}
+.portal-nav {
+    background-color: #f8f9fa;
+    padding: 10px;
+    text-align: center;
+    border-bottom: 1px solid #ccc;
+}
+.portal-nav a {
+    margin: 0 15px;
+    color: #007bff;
+    text-decoration: none;
+}
+.portal-nav a:hover {
+    text-decoration: underline;
+}
+.portal-resources, .portal-profile {
+    max-width: 600px;
+    margin: 20px auto;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+.portal-resources ul {
+    list-style-type: none;
+    padding: 0;
+}
+.portal-resources li {
+    margin: 10px 0;
+}
+.profile-details p {
+    margin: 10px 0;
+}
+.profile-details strong {
+    display: inline-block;
+    width: 120px;
+}
+.portal-footer {
+    text-align: center;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-top: 1px solid #ccc;
+    margin-top: 20px;
+}

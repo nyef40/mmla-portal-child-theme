@@ -1,0 +1,9 @@
+/*
+ Theme Name: Blocksy Child
+ Template: blocksy
+ Version: 1.0
+*/
+.wpforms-submit.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
