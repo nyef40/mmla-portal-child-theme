@@ -23,8 +23,7 @@ add_action('all', function ($hook) {
 /**
  * Load text domain for translations
  */
-function blocksy_child_theme_setup() {
-    load_child_theme_textdomain('blocksy-child', get_stylesheet_directory() . '/languages');
+function blocksy_child_theme_setup() {    load_child_theme_textdomain('blocksy-child', get_stylesheet_directory() . '/languages');
     add_action('init', function() {
         load_theme_textdomain('blocksy', get_template_directory() . '/languages');
         if (function_exists('wpforms')) {
@@ -33,7 +32,6 @@ function blocksy_child_theme_setup() {
     }, 10);
 }
 add_action('after_setup_theme', 'blocksy_child_theme_setup', 10);
-
 /**
  * Enqueue custom JavaScript for form submission
  */
@@ -49,6 +47,50 @@ function blocksy_child_enqueue_scripts() {
     }
 }
 add_action('wp_enqueue_scripts', 'blocksy_child_enqueue_scripts');
+
+/**
+ * Fix form data inconsistencies
+ */
+function fix_form_data_inconsistencies($form_data) {
+    if (isset($form_data['id']) && $form_data['id'] == 1479) {
+        // Fix field_id to match form ID
+        if (isset($form_data['field_id']) && $form_data['field_id'] != $form_data['id']) {
+            $form_data['field_id'] = $form_data['id'];
+        }
+        
+        // Fix created date
+        if (isset($form_data['created'])) {
+            $form_data['created'] = current_time('mysql');
+        }
+    }
+    
+    return $form_data;
+}
+add_filter('wpforms_frontend_form_data', 'fix_form_data_inconsistencies', 10, 1);
+
+/**
+ * Debug admin notification email delivery
+ */
+function debug_admin_notification_email($args) {
+    if (isset($args['to']) && (
+        is_array($args['to']) && in_array('nick.yefimov@mobilemedicalla.com', $args['to']) ||
+        $args['to'] === 'nick.yefimov@mobilemedicalla.com'
+    )) {
+        error_log('Admin notification email debug:', 3, WP_CONTENT_DIR . '/debug.log');
+        error_log('To: ' . print_r($args['to'], true), 3, WP_CONTENT_DIR . '/debug.log');
+        error_log('Subject: ' . $args['subject'], 3, WP_CONTENT_DIR . '/debug.log');
+        error_log('Headers: ' . print_r($args['headers'], true), 3, WP_CONTENT_DIR . '/debug.log');
+        
+        // Add BCC to your verified email
+        if (!isset($args['headers']) || !is_array($args['headers'])) {
+            $args['headers'] = [];
+        }
+        $args['headers'][] = 'Bcc: nyef40@gmail.com';
+    }
+    
+    return $args;
+}
+add_filter('wp_mail', 'debug_admin_notification_email', 1000);
 
 /**
  * Register the validation_url smart tag
@@ -71,7 +113,7 @@ function get_encryption_key() {
         return substr(SECURE_AUTH_KEY, 0, 16);
     }
     
-    return 'mmla_2025_key123';
+    return 'mmla_2025';
 }
 
 /**
@@ -307,6 +349,105 @@ function force_wpforms_html_email($args) {
 add_filter('wpforms_email_send_args', 'force_wpforms_html_email', 10, 1);
 
 /**
+ * Send fallback admin notification
+ */
+function send_fallback_admin_notification($fields, $entry, $form_data, $entry_id) {
+    if ($form_data['id'] != 1479) {
+        return;
+    }
+    
+    // Get form field values
+    $provider_name = isset($fields[2]['value']) ? sanitize_text_field($fields[2]['value']) : '';
+    $provider_practice = isset($fields[14]['value']) ? sanitize_text_field($fields[14]['value']) : '';
+    $provider_email = isset($fields[15]['value']) ? sanitize_email($fields[15]['value']) : '';
+    $provider_phone = isset($fields[16]['value']) ? sanitize_text_field($fields[16]['value']) : '';
+    $patient_name = isset($fields[18]['value']) ? sanitize_text_field($fields[18]['value']) : '';
+    $reason = isset($fields[23]['value']) ? sanitize_text_field($fields[23]['value']) : '';
+    
+    // Store the notification in the database instead of sending email
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'admin_notifications';
+    
+    // Create the table if it doesn't exist
+    $wpdb->query("
+        CREATE TABLE IF NOT EXISTS {$table_name} (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            provider_name VARCHAR(255),
+            provider_email VARCHAR(255),
+            patient_name VARCHAR(255),
+            reason VARCHAR(255),
+            submission_id INT,
+            created_at DATETIME,
+            is_read TINYINT DEFAULT 0
+        )
+    ");
+    
+    // Get the most recent submission ID
+    $submission_id = $wpdb->get_var("SELECT MAX(submission_id) FROM {$wpdb->prefix}referral_submissions");
+    
+    // Insert the notification
+    $wpdb->insert(
+        $table_name,
+        array(
+            'provider_name' => $provider_name,
+            'provider_email' => $provider_email,
+            'patient_name' => $patient_name,
+            'reason' => $reason,
+            'submission_id' => $submission_id,
+            'created_at' => current_time('mysql'),
+            'is_read' => 0
+        )
+    );
+    
+    error_log("Admin notification stored in database for submission ID: $submission_id", 3, WP_CONTENT_DIR . '/debug.log');
+    
+    // Try sending via alternative method
+    try {
+        // HTML version
+        $html_message = "<!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                h1 { color: #0073aa; }
+                .details { background: #f9f9f9; padding: 15px; border-left: 4px solid #0073aa; }
+            </style>
+        </head>
+        <body>
+            <div class='container'>
+                <h1>New Patient Referral</h1>
+                <div class='details'>
+                    <p><strong>Provider:</strong> {$provider_name}</p>
+                    <p><strong>Practice:</strong> {$provider_practice}</p>
+                    <p><strong>Email:</strong> {$provider_email}</p>
+                    <p><strong>Phone:</strong> {$provider_phone}</p>
+                    <p><strong>Patient:</strong> {$patient_name}</p>
+                    <p><strong>Reason:</strong> {$reason}</p>
+                </div>
+                <p>Please log in to the admin dashboard to view full details.</p>
+            </div>
+        </body>
+        </html>";
+        
+        // Try using PHP's mail function directly as a last resort
+        $subject = 'New Patient Referral';
+        $headers = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: Mobile Medical LA <nyef40@gmail.com>',
+        ];
+        
+        // Only use this in development - not recommended for production
+        if (function_exists('mail')) {
+            $mail_result = mail('nick.yefimov@mobilemedicalla.com', $subject, $html_message, implode("\r\n", $headers));
+            error_log("PHP mail() function result: " . ($mail_result ? 'Success' : 'Failed'), 3, WP_CONTENT_DIR . '/debug.log');
+        }
+    } catch (Exception $e) {
+        error_log("Error sending alternative admin notification: " . $e->getMessage(), 3, WP_CONTENT_DIR . '/debug.log');
+    }
+}
+
+/**
  * Handle referral form submission
  */
 function handle_referral_submission($fields, $entry, $form_data) {
@@ -475,3 +616,106 @@ function debug_wpforms_field_data($fields, $form_data) {
     return $fields;
 }
 add_filter('wpforms_process_filter', 'debug_wpforms_field_data', 10, 2);
+
+/**
+ * Add admin dashboard widget for referral notifications
+ */
+function add_referral_notifications_dashboard_widget() {
+    wp_add_dashboard_widget(
+        'referral_notifications_widget',
+        'Recent Patient Referrals',
+        'display_referral_notifications_widget'
+    );
+}
+add_action('wp_dashboard_setup', 'add_referral_notifications_dashboard_widget');
+
+/**
+ * Display referral notifications in dashboard widget
+ */
+function display_referral_notifications_widget() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'admin_notifications';
+    
+    // Check if table exists
+    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$table_name}'");
+    if (!$table_exists) {
+        echo '<p>No referrals found.</p>';
+        return;
+    }
+    
+    // Get recent notifications
+    $notifications = $wpdb->get_results("
+        SELECT * FROM {$table_name}
+        ORDER BY created_at DESC
+        LIMIT 5
+    ");
+    
+    if (empty($notifications)) {
+        echo '<p>No recent referrals found.</p>';
+        return;
+    }
+    
+    echo '<ul class="referral-notifications">';
+    foreach ($notifications as $notification) {
+        $is_read_class = $notification->is_read ? 'read' : 'unread';
+        echo '<li class="' . $is_read_class . '">';
+        echo '<strong>' . esc_html($notification->provider_name) . '</strong> ';
+        echo 'referred a patient for ' . esc_html($notification->reason);
+        echo '<br><small>' . esc_html(human_time_diff(strtotime($notification->created_at), current_time('timestamp'))) . ' ago</small>';
+        echo '</li>';
+    }
+    echo '</ul>';
+    
+    echo '<p><a href="' . admin_url('admin.php?page=referral-notifications') . '">View all referrals</a></p>';
+    
+    // Add some basic styling
+    echo '<style>
+        .referral-notifications { margin-left: 0; padding-left: 0; }
+        .referral-notifications li { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+        .referral-notifications li.unread { font-weight: bold; background-color: #f7fcfe; padding: 5px; }
+        .referral-notifications li small { color: #777; }
+    </style>';
+}
+
+/**
+ * Fix port number in URLs
+ */
+function fix_port_in_urls($url) {
+    // If we're on localhost without port, add it
+    if (strpos($url, 'http://localhost/') === 0) {
+        $url = str_replace('http://localhost/', 'http://localhost:8080/', $url);
+    }
+    return $url;
+}
+
+// Apply to all URL filters
+add_filter('home_url', 'fix_port_in_urls', 99);
+add_filter('site_url', 'fix_port_in_urls', 99);
+add_filter('page_link', 'fix_port_in_urls', 99);
+add_filter('post_link', 'fix_port_in_urls', 99);
+add_filter('get_permalink', 'fix_port_in_urls', 99);
+add_filter('the_permalink', 'fix_port_in_urls', 99);
+add_filter('wp_redirect', 'fix_port_in_urls', 99);
+add_filter('redirect_canonical', 'fix_port_in_urls', 99);
+
+// Fix Elementor URLs
+function fix_elementor_urls($url) {
+    if (is_string($url) && strpos($url, 'http://localhost/') === 0) {
+        return str_replace('http://localhost/', 'http://localhost:8080/', $url);
+    }
+    return $url;
+}
+add_filter('elementor/document/urls/preview', 'fix_elementor_urls');
+add_filter('elementor/document/urls/edit', 'fix_elementor_urls');
+// Enqueue the fix-links script
+function enqueue_fix_links_script() {
+    wp_enqueue_script(
+        'fix-links',
+        get_stylesheet_directory_uri() . '/js/fix-links.js',
+        array(),
+        '1.0',
+        true
+    );
+}
+add_action('wp_enqueue_scripts', 'enqueue_fix_links_script');
+

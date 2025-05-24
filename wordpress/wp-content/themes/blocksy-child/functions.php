@@ -7,6 +7,128 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
 }
 
+
+/**
+ * Environment detection function
+ */
+function is_local_environment() {
+    return (
+        strpos($_SERVER['HTTP_HOST'], 'localhost') !== false || 
+        strpos($_SERVER['SERVER_NAME'], 'localhost') !== false ||
+        $_SERVER['REMOTE_ADDR'] == '127.0.0.1'
+    );
+}
+
+/**
+ * Fix Elementor softDeprecated error - More robust approach
+ */
+function fix_elementor_soft_deprecated() {
+    ?>
+    <script type="text/javascript">
+    (function() {
+        function fixElementorDeprecated() {
+            if (typeof window.elementorCommon !== 'undefined') {
+                if (!window.elementorCommon.helpers) {
+                    window.elementorCommon.helpers = {};
+                }
+                if (!window.elementorCommon.helpers.softDeprecated) {
+                    window.elementorCommon.helpers.softDeprecated = function(name, version, replacement) {
+                        if (console && console.warn) {
+                            console.warn('Elementor: ' + name + ' is deprecated since ' + version + (replacement ? '. Use ' + replacement + ' instead.' : '.'));
+                        }
+                    };
+                }
+            } else {
+                setTimeout(fixElementorDeprecated, 100);
+            }
+        }
+        
+        fixElementorDeprecated();
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', fixElementorDeprecated);
+        } else {
+            fixElementorDeprecated();
+        }
+    })();
+    </script>
+    <?php
+}
+add_action('wp_head', 'fix_elementor_soft_deprecated', 1);
+
+/**
+ * Properly load jQuery
+ */
+function fix_jquery_loading() {
+    if (!is_admin()) {
+        wp_deregister_script('jquery');
+        wp_register_script('jquery', includes_url('/js/jquery/jquery.min.js'), array(), false, false);
+        wp_enqueue_script('jquery');
+    }
+}
+add_action('wp_enqueue_scripts', 'fix_jquery_loading', 1);
+
+// Only apply port fixes on local environment
+if (is_local_environment()) {
+    /**
+     * Fix port number in URLs
+     */
+    function fix_port_in_urls($url) {
+        if (strpos($url, 'http://localhost/') === 0) {
+            $url = str_replace('http://localhost/', 'http://localhost:8080/', $url);
+        }
+        return $url;
+    }
+
+    // Apply to all URL filters
+    add_filter('home_url', 'fix_port_in_urls', 99);
+    add_filter('site_url', 'fix_port_in_urls', 99);
+    add_filter('page_link', 'fix_port_in_urls', 99);
+    add_filter('post_link', 'fix_port_in_urls', 99);
+    add_filter('get_permalink', 'fix_port_in_urls', 99);
+    add_filter('the_permalink', 'fix_port_in_urls', 99);
+    add_filter('wp_redirect', 'fix_port_in_urls', 99);
+    add_filter('redirect_canonical', 'fix_port_in_urls', 99);
+
+    /**
+     * Add port fix script with proper jQuery dependency
+     */
+    function add_port_fix_script() {
+        ?>
+        <script type="text/javascript">
+        (function() {
+            function waitForJQuery() {
+                if (typeof jQuery !== 'undefined') {
+                    jQuery(document).ready(function($) {
+                        // Fix all links that are missing port
+                        $('a').each(function() {
+                            var href = $(this).attr('href');
+                            if (href && href.indexOf('http://localhost/') === 0) {
+                                $(this).attr('href', href.replace('http://localhost/', 'http://localhost:8080/'));
+                            }
+                        });
+                        
+                        // Fix Elementor buttons specifically
+                        $('.elementor-button').each(function() {
+                            var href = $(this).attr('href');
+                            if (href && href.indexOf('http://localhost/') === 0) {
+                                $(this).attr('href', href.replace('http://localhost/', 'http://localhost:8080/'));
+                            }
+                        });
+                    });
+                } else {
+                    setTimeout(waitForJQuery, 100);
+                }
+            }
+            waitForJQuery();
+        })();
+        </script>
+        <?php
+    }
+    add_action('wp_footer', 'add_port_fix_script', 999);
+}
+
+
 /**
  * Debug critical WPForms email filters
  */
@@ -23,8 +145,7 @@ add_action('all', function ($hook) {
 /**
  * Load text domain for translations
  */
-function blocksy_child_theme_setup() {
-    load_child_theme_textdomain('blocksy-child', get_stylesheet_directory() . '/languages');
+function blocksy_child_theme_setup() {    load_child_theme_textdomain('blocksy-child', get_stylesheet_directory() . '/languages');
     add_action('init', function() {
         load_theme_textdomain('blocksy', get_template_directory() . '/languages');
         if (function_exists('wpforms')) {
@@ -677,3 +798,24 @@ function display_referral_notifications_widget() {
         .referral-notifications li small { color: #777; }
     </style>';
 }
+
+/**
+ * Debug script loading
+ */
+function debug_script_loading() {
+    ?>
+    <script type="text/javascript">
+    console.log('Script loading debug:');
+    console.log('jQuery available:', typeof jQuery !== 'undefined');
+    console.log('elementorCommon available:', typeof window.elementorCommon !== 'undefined');
+    if (typeof window.elementorCommon !== 'undefined') {
+        console.log('elementorCommon.helpers available:', typeof window.elementorCommon.helpers !== 'undefined');
+        if (typeof window.elementorCommon.helpers !== 'undefined') {
+            console.log('softDeprecated available:', typeof window.elementorCommon.helpers.softDeprecated !== 'undefined');
+        }
+    }
+    </script>
+    <?php
+}
+add_action('wp_footer', 'debug_script_loading', 1000);
+

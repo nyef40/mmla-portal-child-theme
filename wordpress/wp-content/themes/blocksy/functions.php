@@ -14,3 +14,21 @@ if (version_compare(PHP_VERSION, '5.7.0', '<')) {
 
 require get_template_directory() . '/inc/init.php';
 
+/**
+ * Fix Elementor JavaScript error
+ */
+function fix_elementor_deprecated_error() {
+    ?>
+    <script type="text/javascript">
+    document.addEventListener('DOMContentLoaded', function() {
+        if (window.elementorCommon && !window.elementorCommon.helpers.softDeprecated) {
+            window.elementorCommon.helpers.softDeprecated = function(name, version, replacement) {
+                console.log('Elementor deprecated function: ' + name + ' - since ' + version + (replacement ? ' - Use ' + replacement + ' instead' : ''));
+            };
+        }
+    });
+    </script>
+    <?php
+}
+add_action('wp_head', 'fix_elementor_deprecated_error');
+
