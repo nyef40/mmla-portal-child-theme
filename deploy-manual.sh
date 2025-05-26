@@ -84,7 +84,11 @@ ssh $REMOTE_USER "cd $REMOTE_PATH && wp cache flush && wp transient delete --all
 echo -e "${YELLOW}Testing deployment...${NC}"
 ssh $REMOTE_USER "cd $REMOTE_PATH && wp core verify-checksums"
 
-# 12. Clean up
+# 12. Run database migrations
+echo -e "${YELLOW}Running database migrations...${NC}"
+./server-migrate.sh
+
+# 13. Clean up
 rm -rf deploy-temp
 
 echo -e "${GREEN}Deployment completed successfully!${NC}"
