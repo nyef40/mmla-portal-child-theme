@@ -3,6 +3,8 @@
  * Blocksy Child Theme functions and definitions
  */
 
+// Test deployment comment
+
 if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
 }
@@ -818,10 +820,3 @@ function debug_script_loading() {
     <?php
 }
 add_action('wp_footer', 'debug_script_loading', 1000);
-
-// Test deployment + migration workflow - Mon May 26 05:34:28 PDT 2025
-
-
-
-
-// Fixed deployment test - Tue May 27 03:46:16 PDT 2025
