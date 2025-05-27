@@ -824,3 +824,4 @@ add_action('wp_footer', 'debug_script_loading', 1000);
 
 
 
+// Fixed deployment test - Tue May 27 03:46:16 PDT 2025
