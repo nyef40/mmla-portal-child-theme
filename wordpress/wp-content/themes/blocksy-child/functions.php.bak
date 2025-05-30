@@ -3,8 +3,130 @@
  * Blocksy Child Theme functions and definitions
  */
 
+// Test deployment comment
+
 if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
+}
+
+/**
+ * Environment detection function
+ */
+function is_local_environment() {
+    return (
+        strpos($_SERVER['HTTP_HOST'], 'localhost') !== false || 
+        strpos($_SERVER['SERVER_NAME'], 'localhost') !== false ||
+        $_SERVER['REMOTE_ADDR'] == '127.0.0.1'
+    );
+}
+
+/**
+ * Fix Elementor softDeprecated error - More robust approach
+ */
+function fix_elementor_soft_deprecated() {
+    ?>
+    <script type="text/javascript">
+    (function() {
+        function fixElementorDeprecated() {
+            if (typeof window.elementorCommon !== 'undefined') {
+                if (!window.elementorCommon.helpers) {
+                    window.elementorCommon.helpers = {};
+                }
+                if (!window.elementorCommon.helpers.softDeprecated) {
+                    window.elementorCommon.helpers.softDeprecated = function(name, version, replacement) {
+                        if (console && console.warn) {
+                            console.warn('Elementor: ' + name + ' is deprecated since ' + version + (replacement ? '. Use ' + replacement + ' instead.' : '.'));
+                        }
+                    };
+                }
+            } else {
+                setTimeout(fixElementorDeprecated, 100);
+            }
+        }
+        
+        fixElementorDeprecated();
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', fixElementorDeprecated);
+        } else {
+            fixElementorDeprecated();
+        }
+    })();
+    </script>
+    <?php
+}
+add_action('wp_head', 'fix_elementor_soft_deprecated', 1);
+
+/**
+ * Properly load jQuery
+ */
+function fix_jquery_loading() {
+    if (!is_admin()) {
+        wp_deregister_script('jquery');
+        wp_register_script('jquery', includes_url('/js/jquery/jquery.min.js'), array(), false, false);
+        wp_enqueue_script('jquery');
+    }
+}
+add_action('wp_enqueue_scripts', 'fix_jquery_loading', 1);
+
+// Only apply port fixes on local environment
+if (is_local_environment()) {
+    /**
+     * Fix port number in URLs
+     */
+    function fix_port_in_urls($url) {
+        if (strpos($url, 'http://localhost/') === 0) {
+            $url = str_replace('http://localhost/', 'http://localhost:8080/', $url);
+        }
+        return $url;
+    }
+
+    // Apply to all URL filters
+    add_filter('home_url', 'fix_port_in_urls', 99);
+    add_filter('site_url', 'fix_port_in_urls', 99);
+    add_filter('page_link', 'fix_port_in_urls', 99);
+    add_filter('post_link', 'fix_port_in_urls', 99);
+    add_filter('get_permalink', 'fix_port_in_urls', 99);
+    add_filter('the_permalink', 'fix_port_in_urls', 99);
+    add_filter('wp_redirect', 'fix_port_in_urls', 99);
+    add_filter('redirect_canonical', 'fix_port_in_urls', 99);
+
+    /**
+     * Add port fix script with proper jQuery dependency
+     */
+    function add_port_fix_script() {
+        ?>
+        <script type="text/javascript">
+        (function() {
+            function waitForJQuery() {
+                if (typeof jQuery !== 'undefined') {
+                    jQuery(document).ready(function($) {
+                        // Fix all links that are missing port
+                        $('a').each(function() {
+                            var href = $(this).attr('href');
+                            if (href && href.indexOf('http://localhost/') === 0) {
+                                $(this).attr('href', href.replace('http://localhost/', 'http://localhost:8080/'));
+                            }
+                        });
+                        
+                        // Fix Elementor buttons specifically
+                        $('.elementor-button').each(function() {
+                            var href = $(this).attr('href');
+                            if (href && href.indexOf('http://localhost/') === 0) {
+                                $(this).attr('href', href.replace('http://localhost/', 'http://localhost:8080/'));
+                            }
+                        });
+                    });
+                } else {
+                    setTimeout(waitForJQuery, 100);
+                }
+            }
+            waitForJQuery();
+        })();
+        </script>
+        <?php
+    }
+    add_action('wp_footer', 'add_port_fix_script', 999);
 }
 
 /**
@@ -23,7 +145,8 @@ add_action('all', function ($hook) {
 /**
  * Load text domain for translations
  */
-function blocksy_child_theme_setup() {    load_child_theme_textdomain('blocksy-child', get_stylesheet_directory() . '/languages');
+function blocksy_child_theme_setup() {
+    load_child_theme_textdomain('blocksy-child', get_stylesheet_directory() . '/languages');
     add_action('init', function() {
         load_theme_textdomain('blocksy', get_template_directory() . '/languages');
         if (function_exists('wpforms')) {
@@ -32,6 +155,7 @@ function blocksy_child_theme_setup() {    load_child_theme_textdomain('blocksy-c
     }, 10);
 }
 add_action('after_setup_theme', 'blocksy_child_theme_setup', 10);
+
 /**
  * Enqueue custom JavaScript for form submission
  */
@@ -114,6 +238,48 @@ function get_encryption_key() {
     }
     
     return 'mmla_2025';
+}
+
+/**
+ * Get HTML email template with styled validation button
+ */
+function get_provider_email_template($provider_name, $validation_url) {
+    return '
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Validation - Mobile Medical LA</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <h1 style="color: #0066cc; margin: 0; font-size: 24px;">Mobile Medical LA</h1>
+                </div>
+                
+                <h2 style="color: #333; margin-top: 0;">Email Validation Required</h2>
+                
+                <p>Dear ' . esc_html($provider_name) . ',</p>
+                
+                <p>Thank you for referring a patient to Mobile Medical LA. Please validate your email address by clicking the button below:</p>
+                
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="' . esc_url($validation_url) . '" style="display: inline-block; background-color: #0066cc; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px; border: none; cursor: pointer;">Validate Email Address</a>
+                </div>
+                
+                <p>If the button above doesn\'t work, you can copy and paste this link into your browser:</p>
+                <p style="word-break: break-all; color: #666; background: #f9f9f9; padding: 10px; border-radius: 4px; font-size: 14px;">' . esc_url($validation_url) . '</p>
+                
+                <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 14px;">
+                    <p>Best regards,<br>
+                    <strong>Mobile Medical LA Team</strong></p>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>';
 }
 
 /**
@@ -211,7 +377,7 @@ function get_validation_url($entry_id) {
 }
 
 /**
- * Process the validation_url smart tag
+ * Process the validation_url smart tag with HTML button formatting
  */
 function wpforms_smart_tag_process_validation_url($content, $tag, $form_data, $fields, $entry_id) {
     error_log("Smart tag process called for entry_id: $entry_id", 3, WP_CONTENT_DIR . '/debug.log');
@@ -223,8 +389,22 @@ function wpforms_smart_tag_process_validation_url($content, $tag, $form_data, $f
 
     $validation_url = get_validation_url($entry_id);
     if ($validation_url) {
-        error_log("Smart tag replaced validation_url with: $validation_url", 3, WP_CONTENT_DIR . '/debug.log');
-        return esc_url_raw($validation_url);
+        // Get provider name for personalized email
+        global $wpdb;
+        $provider_name = $wpdb->get_var($wpdb->prepare(
+            "SELECT value FROM {$wpdb->prefix}wpforms_entry_fields 
+             WHERE entry_id = %d AND field_id = 2",
+            $entry_id
+        ));
+        
+        if (!$provider_name) {
+            $provider_name = 'Doctor';
+        }
+        
+        // Return complete HTML email template instead of just URL
+        $html_template = get_provider_email_template($provider_name, $validation_url);
+        error_log("Smart tag replaced with HTML template", 3, WP_CONTENT_DIR . '/debug.log');
+        return $html_template;
     }
 
     error_log("Smart tag: No validation_url found for entry_id: $entry_id", 3, WP_CONTENT_DIR . '/debug.log');
@@ -259,8 +439,21 @@ function modify_email_content($message, $notification = null, $form_data = null,
     if ($entry_id) {
         $validation_url = get_validation_url($entry_id);
         if ($validation_url) {
-            $message = str_replace('{validation_url}', esc_url_raw($validation_url), $message);
-            error_log("Email modified with validation URL: $validation_url", 3, WP_CONTENT_DIR . '/debug.log');
+            // Get provider name for personalized email
+            $provider_name = $wpdb->get_var($wpdb->prepare(
+                "SELECT value FROM {$wpdb->prefix}wpforms_entry_fields 
+                 WHERE entry_id = %d AND field_id = 2",
+                $entry_id
+            ));
+            
+            if (!$provider_name) {
+                $provider_name = 'Doctor';
+            }
+            
+            // Replace with complete HTML template
+            $html_template = get_provider_email_template($provider_name, $validation_url);
+            $message = str_replace('{validation_url}', $html_template, $message);
+            error_log("Email modified with HTML template", 3, WP_CONTENT_DIR . '/debug.log');
         } else {
             error_log("No validation URL found for entry $entry_id", 3, WP_CONTENT_DIR . '/debug.log');
         }
@@ -304,8 +497,21 @@ function last_chance_email_modification($args) {
             $validation_url = get_validation_url($entry_id);
             
             if ($validation_url) {
-                $args['message'] = str_replace('{validation_url}', esc_url_raw($validation_url), $args['message']);
-                error_log("Last chance replaced validation URL with: $validation_url", 3, WP_CONTENT_DIR . '/debug.log');
+                // Get provider name
+                $provider_name = $wpdb->get_var($wpdb->prepare(
+                    "SELECT value FROM {$wpdb->prefix}wpforms_entry_fields 
+                     WHERE entry_id = %d AND field_id = 2",
+                    $entry_id
+                ));
+                
+                if (!$provider_name) {
+                    $provider_name = 'Doctor';
+                }
+                
+                // Replace with HTML template
+                $html_template = get_provider_email_template($provider_name, $validation_url);
+                $args['message'] = str_replace('{validation_url}', $html_template, $args['message']);
+                error_log("Last chance replaced with HTML template", 3, WP_CONTENT_DIR . '/debug.log');
             }
         } else {
             error_log("No entry found for email $to", 3, WP_CONTENT_DIR . '/debug.log');
@@ -330,8 +536,9 @@ function last_chance_email_modification($args) {
                 home_url()
             );
             
-            $args['message'] = str_replace('{validation_url}', esc_url_raw($validation_url), $args['message']);
-            error_log("Last resort replaced validation URL with: $validation_url", 3, WP_CONTENT_DIR . '/debug.log');
+            $html_template = get_provider_email_template('Doctor', $validation_url);
+            $args['message'] = str_replace('{validation_url}', $html_template, $args['message']);
+            error_log("Last resort replaced with HTML template", 3, WP_CONTENT_DIR . '/debug.log');
         }
     }
 
@@ -678,44 +885,21 @@ function display_referral_notifications_widget() {
 }
 
 /**
- * Fix port number in URLs
+ * Debug script loading
  */
-function fix_port_in_urls($url) {
-    // If we're on localhost without port, add it
-    if (strpos($url, 'http://localhost/') === 0) {
-        $url = str_replace('http://localhost/', 'http://localhost:8080/', $url);
+function debug_script_loading() {
+    ?>
+    <script type="text/javascript">
+    console.log('Script loading debug:');
+    console.log('jQuery available:', typeof jQuery !== 'undefined');
+    console.log('elementorCommon available:', typeof window.elementorCommon !== 'undefined');
+    if (typeof window.elementorCommon !== 'undefined') {
+        console.log('elementorCommon.helpers available:', typeof window.elementorCommon.helpers !== 'undefined');
+        if (typeof window.elementorCommon.helpers !== 'undefined') {
+            console.log('softDeprecated available:', typeof window.elementorCommon.helpers.softDeprecated !== 'undefined');
+        }
     }
-    return $url;
+    </script>
+    <?php
 }
-
-// Apply to all URL filters
-add_filter('home_url', 'fix_port_in_urls', 99);
-add_filter('site_url', 'fix_port_in_urls', 99);
-add_filter('page_link', 'fix_port_in_urls', 99);
-add_filter('post_link', 'fix_port_in_urls', 99);
-add_filter('get_permalink', 'fix_port_in_urls', 99);
-add_filter('the_permalink', 'fix_port_in_urls', 99);
-add_filter('wp_redirect', 'fix_port_in_urls', 99);
-add_filter('redirect_canonical', 'fix_port_in_urls', 99);
-
-// Fix Elementor URLs
-function fix_elementor_urls($url) {
-    if (is_string($url) && strpos($url, 'http://localhost/') === 0) {
-        return str_replace('http://localhost/', 'http://localhost:8080/', $url);
-    }
-    return $url;
-}
-add_filter('elementor/document/urls/preview', 'fix_elementor_urls');
-add_filter('elementor/document/urls/edit', 'fix_elementor_urls');
-// Enqueue the fix-links script
-function enqueue_fix_links_script() {
-    wp_enqueue_script(
-        'fix-links',
-        get_stylesheet_directory_uri() . '/js/fix-links.js',
-        array(),
-        '1.0',
-        true
-    );
-}
-add_action('wp_enqueue_scripts', 'enqueue_fix_links_script');
-
+add_action('wp_footer', 'debug_script_loading', 1000);
