@@ -1,4 +1,6 @@
 <?php
+date_default_timezone_set('America/Los_Angeles');
+define('WP_DEBUG_LOG_TIMEZONE', 'America/Los_Angeles');
 define('WP_CACHE', true); // WP-Optimize Cache
 // ** Database settings - You can get this info from your web host ** //
 define( 'DB_NAME', 'wordpress' );
@@ -17,9 +19,12 @@ define('SECURE_AUTH_SALT', 'NY5q1zI?69wh{?-%b3V~`M_|*DoHq5oBmC[osoG4asG30Qv|l]&N
 define('LOGGED_IN_SALT',   '7$ +q1$-X`/z-!L|WAq&4 +:WDg8%`LJZT&p6R6_uc8^wcqT=#i`$|,a=E*$1+rx');
 define('NONCE_SALT',       't;|&PIC)U-}4/`N4$X6.cJkzP9=CNZbBe:w0]C/*Ah`L1z$ENf#;t>ru>;p]:Naa');
 // For developers: WordPress debugging mode
-define( 'WP_DEBUG', true );
-define( 'WP_DEBUG_LOG', true );
+define( 'WP_DEBUG', false );
+define( 'WP_DEBUG_LOG', false );
 define( 'WP_DEBUG_DISPLAY', false );
+define('SCRIPT_DEBUG', false);
+define('WP_DISABLE_FATAL_ERROR_HANDLER', true);
+@ini_set('display_errors', 0);
 $table_prefix = 'lqbk_';
 define ('MMLA_ENCRYPTION_KEY', 'mmla_2025');
 // Absolute path to the WordPress directory

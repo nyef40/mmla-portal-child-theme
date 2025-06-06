@@ -3,6 +3,62 @@
  * Blocksy Child Theme functions and definitions
  */
 
+ /**
+ * Proper translation loading at the right hook priority
+ */
+function mmla_load_translations() {
+    // Theme translations
+    load_theme_textdomain('blocksy', get_template_directory() . '/languages');
+    load_child_theme_textdomain('blocksy-child', get_stylesheet_directory() . '/languages');
+    
+    // Plugin translations - use the correct text domain
+    if (defined('WPFORMS_PLUGIN_FILE')) {
+        $domain = defined('WPFORMS_LITE') ? 'wpforms-lite' : 'wpforms';
+        load_plugin_textdomain($domain, false, dirname(plugin_basename(WPFORMS_PLUGIN_FILE)) . '/languages');
+    }
+}
+// Use priority 5 to ensure it runs early in the init hook, but not before init
+add_action('init', 'mmla_load_translations', 5);
+
+function mmla_disable_plugin_translation_loading() {
+    // Remove WPForms translation loading
+    if (class_exists('WPForms')) {
+        remove_action('plugins_loaded', array(WPForms(), 'load_textdomain'), 10);
+    }
+}
+add_action('plugins_loaded', 'mmla_disable_plugin_translation_loading', 5);
+
+/**
+ * Suppress specific translation loading notices
+ */
+function mmla_suppress_translation_notices() {
+    set_error_handler(function($errno, $errstr) {
+        if (strpos($errstr, '_load_textdomain_just_in_time') !== false) {
+            return true; // Suppress this specific error
+        }
+        return false; // Let PHP handle other errors
+    }, E_NOTICE);
+}
+add_action('plugins_loaded', 'mmla_suppress_translation_notices', 1);
+
+// Suppress specific WordPress notices
+add_action('init', function() {
+    // Remove translation loading notices
+    remove_action('_wp_die_handler', '_default_wp_die_handler');
+    
+    // Custom error handler to suppress translation notices
+    set_error_handler(function($errno, $errstr, $errfile, $errline) {
+        if (strpos($errstr, '_load_textdomain_just_in_time') !== false) {
+            return true; // Suppress this error
+        }
+        if (strpos($errstr, 'Translation loading') !== false) {
+            return true; // Suppress translation errors
+        }
+        return false; // Let PHP handle other errors normally
+    }, E_ALL);
+}, 1);
+
+
 // Test deployment comment
 
 if (!defined('ABSPATH')) {
@@ -10,13 +66,17 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Environment detection function
+ * Environment detection function - Fixed version
  */
 function is_local_environment() {
+    $http_host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
+    $server_name = isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : '';
+    $remote_addr = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
+    
     return (
-        strpos($_SERVER['HTTP_HOST'], 'localhost') !== false || 
-        strpos($_SERVER['SERVER_NAME'], 'localhost') !== false ||
-        $_SERVER['REMOTE_ADDR'] == '127.0.0.1'
+        strpos($http_host, 'localhost') !== false || 
+        strpos($server_name, 'localhost') !== false ||
+        $remote_addr === '127.0.0.1'
     );
 }
 
@@ -129,32 +189,6 @@ if (is_local_environment()) {
     add_action('wp_footer', 'add_port_fix_script', 999);
 }
 
-/**
- * Debug critical WPForms email filters
- */
-add_action('all', function ($hook) {
-    if (strpos($hook, 'wpforms') !== false && (
-        strpos($hook, 'email') !== false || 
-        strpos($hook, 'process') !== false || 
-        strpos($hook, 'entry') !== false
-    )) {
-        error_log("WPForms filter called: $hook", 3, WP_CONTENT_DIR . '/debug.log');
-    }
-});
-
-/**
- * Load text domain for translations
- */
-function blocksy_child_theme_setup() {
-    load_child_theme_textdomain('blocksy-child', get_stylesheet_directory() . '/languages');
-    add_action('init', function() {
-        load_theme_textdomain('blocksy', get_template_directory() . '/languages');
-        if (function_exists('wpforms')) {
-            load_plugin_textdomain('wpforms', false, dirname(plugin_basename(WPFORMS_PLUGIN_FILE)) . '/languages');
-        }
-    }, 10);
-}
-add_action('after_setup_theme', 'blocksy_child_theme_setup', 10);
 
 /**
  * Enqueue custom JavaScript for form submission
@@ -291,7 +325,7 @@ function get_validation_url($entry_id) {
     // Try transient first
     $transient_key = 'wpforms_validation_url_' . $entry_id;
     $validation_url = get_transient($transient_key);
-    error_log("Transient lookup for entry_id $entry_id: " . ($validation_url ? "Found" : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
+    // error_log("Transient lookup for entry_id $entry_id: " . ($validation_url ? "Found" : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
     
     if ($validation_url) {
         return $validation_url;
@@ -299,7 +333,7 @@ function get_validation_url($entry_id) {
     
     // Try option next
     $validation_url = get_option('wpforms_validation_url_' . $entry_id);
-    error_log("Option lookup for entry_id $entry_id: " . ($validation_url ? "Found" : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
+    // error_log("Option lookup for entry_id $entry_id: " . ($validation_url ? "Found" : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
     
     if ($validation_url) {
         return $validation_url;
@@ -315,7 +349,7 @@ function get_validation_url($entry_id) {
         ));
         
         if ($provider_email) {
-            error_log("Found provider email for entry $entry_id: $provider_email", 3, WP_CONTENT_DIR . '/debug.log');
+            // error_log("Found provider email for entry $entry_id: $provider_email", 3, WP_CONTENT_DIR . '/debug.log');
             
             // Use direct query with BINARY to force case-sensitive comparison
             $submission = $wpdb->get_row($wpdb->prepare(
@@ -340,7 +374,7 @@ function get_validation_url($entry_id) {
                 set_transient($transient_key, $validation_url, 14 * DAY_IN_SECONDS);
                 update_option('wpforms_validation_url_' . $entry_id, $validation_url, false);
                 
-                error_log("Created validation URL from submission: $validation_url", 3, WP_CONTENT_DIR . '/debug.log');
+                // error_log("Created validation URL from submission: $validation_url", 3, WP_CONTENT_DIR . '/debug.log');
                 return $validation_url;
             }
         }
@@ -366,7 +400,7 @@ function get_validation_url($entry_id) {
                 home_url()
             );
             
-            error_log("Last resort validation URL from most recent submission: $validation_url", 3, WP_CONTENT_DIR . '/debug.log');
+            // error_log("Last resort validation URL from most recent submission: $validation_url", 3, WP_CONTENT_DIR . '/debug.log');
             return $validation_url;
         }
     } catch (Exception $e) {
@@ -377,13 +411,19 @@ function get_validation_url($entry_id) {
 }
 
 /**
- * Process the validation_url smart tag with HTML button formatting
+ * Process validation_url smart tag with duplication prevention
  */
 function wpforms_smart_tag_process_validation_url($content, $tag, $form_data, $fields, $entry_id) {
     error_log("Smart tag process called for entry_id: $entry_id", 3, WP_CONTENT_DIR . '/debug.log');
 
     if (empty($entry_id)) {
         error_log("Smart tag: No entry_id provided", 3, WP_CONTENT_DIR . '/debug.log');
+        return $content;
+    }
+
+    // Check if this content already has been processed
+    if (strpos($content, 'Validate Email Address') !== false) {
+        error_log("Smart tag: Content already processed, skipping", 3, WP_CONTENT_DIR . '/debug.log');
         return $content;
     }
 
@@ -401,7 +441,7 @@ function wpforms_smart_tag_process_validation_url($content, $tag, $form_data, $f
             $provider_name = 'Doctor';
         }
         
-        // Return complete HTML email template instead of just URL
+        // Return complete HTML email template
         $html_template = get_provider_email_template($provider_name, $validation_url);
         error_log("Smart tag replaced with HTML template", 3, WP_CONTENT_DIR . '/debug.log');
         return $html_template;
@@ -417,7 +457,7 @@ add_filter('wpforms_smart_tag_process_validation_url', 'wpforms_smart_tag_proces
  */
 function modify_email_content($message, $notification = null, $form_data = null, $fields = null, $entry_id = null) {
     global $wpdb;
-    error_log("Email modification called with " . count(func_get_args()) . " parameters", 3, WP_CONTENT_DIR . '/debug.log');
+    // error_log("Email modification called with " . count(func_get_args()) . " parameters", 3, WP_CONTENT_DIR . '/debug.log');
     
     // Skip if no validation_url placeholder
     if (empty($message) || strpos($message, '{validation_url}') === false) {
@@ -467,21 +507,40 @@ add_filter('wpforms_emails_notifications_message', 'modify_email_content', 20, 5
 add_filter('wpforms_email_message', 'modify_email_content', 20, 5);
 
 /**
- * Last chance to modify email before sending
+ * Enhanced last chance email modification with email type detection
  */
 function last_chance_email_modification($args) {
     global $wpdb;
-    error_log("Last chance email modification", 3, WP_CONTENT_DIR . '/debug.log');
+    // error_log("Last chance email modification", 3, WP_CONTENT_DIR . '/debug.log');
 
     if (!isset($args['message']) || strpos($args['message'], '{validation_url}') === false) {
         return $args;
     }
 
-    // Try to get the recipient email
+    // Get recipient email
     $to = isset($args['to']) ? $args['to'] : '';
     if (is_array($to)) {
         $to = reset($to);
     }
+    
+    // error_log("Email recipient: $to", 3, WP_CONTENT_DIR . '/debug.log');
+    
+    // Check if this is an admin email (should not have validation links)
+    $admin_emails = [
+        'nick.yefimov@mobilemedicalla.com',
+        'nyef40@gmail.com',
+        get_option('admin_email')
+    ];
+    
+    if (in_array($to, $admin_emails)) {
+        // error_log("Admin email detected - removing validation URL", 3, WP_CONTENT_DIR . '/debug.log');
+        // For admin emails, just remove the validation URL placeholder
+        $args['message'] = str_replace('{validation_url}', '', $args['message']);
+        return $args;
+    }
+    
+    // This is a provider email - add validation URL
+    // error_log("Provider email detected - adding validation URL", 3, WP_CONTENT_DIR . '/debug.log');
     
     if (!empty($to)) {
         // Try to find the entry ID based on the recipient email
@@ -493,7 +552,7 @@ function last_chance_email_modification($args) {
         ));
         
         if ($entry_id) {
-            error_log("Found entry ID $entry_id for email $to", 3, WP_CONTENT_DIR . '/debug.log');
+            // error_log("Found entry ID $entry_id for email $to", 3, WP_CONTENT_DIR . '/debug.log');
             $validation_url = get_validation_url($entry_id);
             
             if ($validation_url) {
@@ -511,34 +570,8 @@ function last_chance_email_modification($args) {
                 // Replace with HTML template
                 $html_template = get_provider_email_template($provider_name, $validation_url);
                 $args['message'] = str_replace('{validation_url}', $html_template, $args['message']);
-                error_log("Last chance replaced with HTML template", 3, WP_CONTENT_DIR . '/debug.log');
+                // error_log("Provider email: validation URL added", 3, WP_CONTENT_DIR . '/debug.log');
             }
-        } else {
-            error_log("No entry found for email $to", 3, WP_CONTENT_DIR . '/debug.log');
-        }
-    }
-    
-    // If still not replaced, try with the most recent submission
-    if (strpos($args['message'], '{validation_url}') !== false) {
-        $submission = $wpdb->get_row(
-            "SELECT submission_id, validation_token 
-             FROM {$wpdb->prefix}referral_submissions 
-             ORDER BY submission_id DESC LIMIT 1"
-        );
-        
-        if ($submission) {
-            $validation_url = add_query_arg(
-                array(
-                    'action' => 'validate_email',
-                    'token' => $submission->validation_token,
-                    'submission_id' => $submission->submission_id
-                ),
-                home_url()
-            );
-            
-            $html_template = get_provider_email_template('Doctor', $validation_url);
-            $args['message'] = str_replace('{validation_url}', $html_template, $args['message']);
-            error_log("Last resort replaced with HTML template", 3, WP_CONTENT_DIR . '/debug.log');
         }
     }
 
@@ -658,8 +691,8 @@ function send_fallback_admin_notification($fields, $entry, $form_data, $entry_id
  * Handle referral form submission
  */
 function handle_referral_submission($fields, $entry, $form_data) {
-    error_log("Form submission: Form ID = " . $form_data['id'], 3, WP_CONTENT_DIR . '/debug.log');
-    error_log("Fields received: " . print_r(array_keys($fields), true), 3, WP_CONTENT_DIR . '/debug.log');
+    // error_log("Form submission: Form ID = " . $form_data['id'], 3, WP_CONTENT_DIR . '/debug.log');
+    // error_log("Fields received: " . print_r(array_keys($fields), true), 3, WP_CONTENT_DIR . '/debug.log');
 
     if ($form_data['id'] != 1479) {
         error_log("Not the referral form (ID " . $form_data['id'] . "), skipping", 3, WP_CONTENT_DIR . '/debug.log');
@@ -671,7 +704,7 @@ function handle_referral_submission($fields, $entry, $form_data) {
     if (!$entry_id && isset($GLOBALS['wpforms_process']) && !empty($GLOBALS['wpforms_process']->entry_id)) {
         $entry_id = $GLOBALS['wpforms_process']->entry_id;
     }
-    error_log("Entry ID for referral: " . ($entry_id ? $entry_id : "Not available"), 3, WP_CONTENT_DIR . '/debug.log');
+    // error_log("Entry ID for referral: " . ($entry_id ? $entry_id : "Not available"), 3, WP_CONTENT_DIR . '/debug.log');
 
     static $processed_entries = [];
     if ($entry_id && in_array($entry_id, $processed_entries)) {
@@ -696,10 +729,10 @@ function handle_referral_submission($fields, $entry, $form_data) {
         $reason = isset($fields[23]['value']) ? sanitize_text_field($fields[23]['value']) : '';
         $notes = isset($fields[24]['value']) ? sanitize_textarea_field($fields[24]['value']) : '';
 
-        error_log("Provider Name: $provider_name, Email: $provider_email", 3, WP_CONTENT_DIR . '/debug.log');
+        // error_log("Provider Name: $provider_name, Email: $provider_email", 3, WP_CONTENT_DIR . '/debug.log');
 
         $validation_token = wp_generate_uuid4();
-        error_log("Generated validation token: $validation_token", 3, WP_CONTENT_DIR . '/debug.log');
+        // error_log("Generated validation token: $validation_token", 3, WP_CONTENT_DIR . '/debug.log');
 
         $encryption_key = get_encryption_key();
         $table_name = $wpdb->prefix . 'referral_submissions';
@@ -749,15 +782,15 @@ function handle_referral_submission($fields, $entry, $form_data) {
         if ($entry_id) {
             $transient_key = 'wpforms_validation_url_' . $entry_id;
             $transient_set = set_transient($transient_key, $validation_url, 14 * DAY_IN_SECONDS);
-            error_log("Transient set result: " . ($transient_set ? "Success" : "Failed"), 3, WP_CONTENT_DIR . '/debug.log');
+            // error_log("Transient set result: " . ($transient_set ? "Success" : "Failed"), 3, WP_CONTENT_DIR . '/debug.log');
             $check_transient = get_transient($transient_key);
-            error_log("Immediate transient check: " . ($check_transient ? $check_transient : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
+            // error_log("Immediate transient check: " . ($check_transient ? $check_transient : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
 
             update_option('wpforms_validation_url_' . $entry_id, $validation_url, true);
             $check_option = get_option('wpforms_validation_url_' . $entry_id);
-            error_log("Immediate option check: " . ($check_option ? $check_option : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
+            // error_log("Immediate option check: " . ($check_option ? $check_option : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
         } else {
-            error_log("No entry_id available, storing validation URL in global option", 3, WP_CONTENT_DIR . '/debug.log');
+            // error_log("No entry_id available, storing validation URL in global option", 3, WP_CONTENT_DIR . '/debug.log');
             update_option('latest_validation_url', $validation_url, true);
         }
     } catch (Exception $e) {
@@ -779,7 +812,7 @@ function handle_referral_validation() {
         global $wpdb;
         $token = sanitize_text_field($_GET['token']);
         $submission_id = absint($_GET['submission_id']);
-        error_log("Validation attempt: Token=$token, Submission ID=$submission_id", 3, WP_CONTENT_DIR . '/debug.log');
+        // error_log("Validation attempt: Token=$token, Submission ID=$submission_id", 3, WP_CONTENT_DIR . '/debug.log');
 
         $table_name = $wpdb->prefix . 'referral_submissions';
         $submission = $wpdb->get_row($wpdb->prepare(
@@ -809,20 +842,6 @@ function handle_referral_validation() {
     }
 }
 add_action('init', 'handle_referral_validation');
-
-/**
- * Debug form field IDs and values
- */
-function debug_wpforms_field_data($fields, $form_data) {
-    if ($form_data['id'] == 1479) {
-        error_log('DEBUG: Form 1479 field data:', 3, WP_CONTENT_DIR . '/debug.log');
-        foreach ($fields as $id => $field) {
-            error_log("Field ID: $id, Label: {$field['name']}, Value: {$field['value']}", 3, WP_CONTENT_DIR . '/debug.log');
-        }
-    }
-    return $fields;
-}
-add_filter('wpforms_process_filter', 'debug_wpforms_field_data', 10, 2);
 
 /**
  * Add admin dashboard widget for referral notifications
@@ -885,21 +904,29 @@ function display_referral_notifications_widget() {
 }
 
 /**
- * Debug script loading
+ * Debug email processing to identify duplicate sources
  */
-function debug_script_loading() {
-    ?>
-    <script type="text/javascript">
-    console.log('Script loading debug:');
-    console.log('jQuery available:', typeof jQuery !== 'undefined');
-    console.log('elementorCommon available:', typeof window.elementorCommon !== 'undefined');
-    if (typeof window.elementorCommon !== 'undefined') {
-        console.log('elementorCommon.helpers available:', typeof window.elementorCommon.helpers !== 'undefined');
-        if (typeof window.elementorCommon.helpers !== 'undefined') {
-            console.log('softDeprecated available:', typeof window.elementorCommon.helpers.softDeprecated !== 'undefined');
-        }
-    }
-    </script>
-    <?php
+function debug_email_processing($message, $context = 'unknown') {
+    $validation_count = substr_count($message, 'Validate Email Address');
+    $processed_count = substr_count($message, '<!-- VALIDATION_EMAIL_PROCESSED -->');
+    
+    // error_log("Email debug [$context]: Validation buttons: $validation_count, Processed markers: $processed_count", 3, WP_CONTENT_DIR . '/debug.log');
+    
+    return $message;
 }
-add_action('wp_footer', 'debug_script_loading', 1000);
+
+// Add debug to all email filters
+add_filter('wpforms_smart_tag_process_validation_url', function($content) {
+    return debug_email_processing($content, 'smart_tag');
+}, 999, 1);
+
+add_filter('wpforms_emails_notifications_message', function($message) {
+    return debug_email_processing($message, 'notifications');
+}, 999, 1);
+
+add_filter('wp_mail', function($args) {
+    if (isset($args['message'])) {
+        $args['message'] = debug_email_processing($args['message'], 'wp_mail');
+    }
+    return $args;
+}, 999);
