@@ -20,6 +20,8 @@
  */
 namespace ForminatorGoogleAddon\phpseclib3\Crypt\EC\BaseCurves;
 
+use \RuntimeException;
+use \UnexpectedValueException;
 use ForminatorGoogleAddon\phpseclib3\Common\Functions\Strings;
 use ForminatorGoogleAddon\phpseclib3\Math\BigInteger;
 use ForminatorGoogleAddon\phpseclib3\Math\Common\FiniteField\Integer;
@@ -118,7 +120,7 @@ class Prime extends Base
     public function setCoefficients(BigInteger $a, BigInteger $b)
     {
         if (!isset($this->factory)) {
-            throw new \RuntimeException('setModulo needs to be called before this method');
+            throw new RuntimeException('setModulo needs to be called before this method');
         }
         $this->a = $this->factory->newInteger($a);
         $this->b = $this->factory->newInteger($b);
@@ -134,12 +136,12 @@ class Prime extends Base
     {
         switch (\true) {
             case !$x instanceof BigInteger && !$x instanceof PrimeInteger:
-                throw new \UnexpectedValueException('ForminatorGoogleAddon\\Argument 1 passed to Prime::setBasePoint() must be an instance of either BigInteger or PrimeField\\Integer');
+                throw new UnexpectedValueException('ForminatorGoogleAddon\\Argument 1 passed to Prime::setBasePoint() must be an instance of either BigInteger or PrimeField\\Integer');
             case !$y instanceof BigInteger && !$y instanceof PrimeInteger:
-                throw new \UnexpectedValueException('ForminatorGoogleAddon\\Argument 2 passed to Prime::setBasePoint() must be an instance of either BigInteger or PrimeField\\Integer');
+                throw new UnexpectedValueException('ForminatorGoogleAddon\\Argument 2 passed to Prime::setBasePoint() must be an instance of either BigInteger or PrimeField\\Integer');
         }
         if (!isset($this->factory)) {
-            throw new \RuntimeException('setModulo needs to be called before this method');
+            throw new RuntimeException('setModulo needs to be called before this method');
         }
         $this->p = [$x instanceof BigInteger ? $this->factory->newInteger($x) : $x, $y instanceof BigInteger ? $this->factory->newInteger($y) : $y];
     }
@@ -151,11 +153,11 @@ class Prime extends Base
     public function getBasePoint()
     {
         if (!isset($this->factory)) {
-            throw new \RuntimeException('setModulo needs to be called before this method');
+            throw new RuntimeException('setModulo needs to be called before this method');
         }
         /*
         if (!isset($this->p)) {
-            throw new \RuntimeException('setBasePoint needs to be called before this method');
+            throw new RuntimeException('setBasePoint needs to be called before this method');
         }
         */
         return $this->p;
@@ -256,7 +258,7 @@ class Prime extends Base
     public function addPoint(array $p, array $q)
     {
         if (!isset($this->factory)) {
-            throw new \RuntimeException('setModulo needs to be called before this method');
+            throw new RuntimeException('setModulo needs to be called before this method');
         }
         if (!\count($p) || !\count($q)) {
             if (\count($q)) {
@@ -281,7 +283,7 @@ class Prime extends Base
             return $this->jacobianAddPoint($p, $q);
         }
         if (isset($p[2]) || isset($q[2])) {
-            throw new \RuntimeException('Affine coordinates need to be manually converted to Jacobi coordinates or vice versa');
+            throw new RuntimeException('Affine coordinates need to be manually converted to Jacobi coordinates or vice versa');
         }
         if ($p[0]->equals($q[0])) {
             if (!$p[1]->equals($q[1])) {
@@ -356,7 +358,7 @@ class Prime extends Base
     public function doublePoint(array $p)
     {
         if (!isset($this->factory)) {
-            throw new \RuntimeException('setModulo needs to be called before this method');
+            throw new RuntimeException('setModulo needs to be called before this method');
         }
         if (!\count($p)) {
             return [];
@@ -392,14 +394,14 @@ class Prime extends Base
                 $ypn = \true;
                 break;
             default:
-                throw new \RuntimeException('Coordinate not in recognized format');
+                throw new RuntimeException('Coordinate not in recognized format');
         }
         $temp = $xp->multiply($this->a);
         $temp = $xp->multiply($xp)->multiply($xp)->add($temp);
         $temp = $temp->add($this->b);
         $b = $temp->squareRoot();
         if (!$b) {
-            throw new \RuntimeException('Unable to derive Y coordinate');
+            throw new RuntimeException('Unable to derive Y coordinate');
         }
         $bn = $b->isOdd();
         $yp = $ypn == $bn ? $b : $b->negate();
@@ -604,7 +606,7 @@ class Prime extends Base
      *
      * @return int[]
      */
-    private static function getJSFPoints(Integer $k1, Integer $k2)
+    private static function getJSFPoints(PrimeInteger $k1, PrimeInteger $k2)
     {
         static $three;
         if (!isset($three)) {

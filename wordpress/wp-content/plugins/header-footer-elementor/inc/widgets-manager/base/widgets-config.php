@@ -21,9 +21,9 @@ if ( ! function_exists( 'get_plugins' ) ) {
 
 /**
  * Class Widgets_Config.
+ */
 if ( ! class_exists( 'HFE\WidgetsManager\Base\Widgets_Config' ) ) {
 	class Widgets_Config {
-class Widgets_Config {
 
 	/**
 	 * Widget List
@@ -1172,5 +1172,5 @@ class Widgets_Config {
 	}
 
 
-
+	}
 }
