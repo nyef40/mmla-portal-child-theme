@@ -1,932 +1,1159 @@
 <?php
 /**
- * Blocksy Child Theme functions and definitions
+ * Mobile Medical LA Portal - Clean Implementation
+ * Single functions.php with all portal functionality
  */
 
- /**
- * Proper translation loading at the right hook priority
- */
-function mmla_load_translations() {
-    // Theme translations
-    load_theme_textdomain('blocksy', get_template_directory() . '/languages');
-    load_child_theme_textdomain('blocksy-child', get_stylesheet_directory() . '/languages');
+if (!defined('ABSPATH')) exit;
+
+// ============================================
+// CONFIGURATION (must be before any require that uses portal_debug)
+// ============================================
+\define('PORTAL_VERSION', '2.0.0');
+\define('PORTAL_DEBUG', true);
+date_default_timezone_set('America/Los_Angeles');
+
+function portal_debug($message, $data = null, $file = 'portal-debug.log') {
+    $timestamp = date('Y-m-d H:i:s');
+    $log_entry = "[$timestamp] $message";
     
-    // Plugin translations - use the correct text domain
-    if (defined('WPFORMS_PLUGIN_FILE')) {
-        $domain = defined('WPFORMS_LITE') ? 'wpforms-lite' : 'wpforms';
-        load_plugin_textdomain($domain, false, dirname(plugin_basename(WPFORMS_PLUGIN_FILE)) . '/languages');
+    if ($data !== null) {
+        $log_entry .= " | Data: " . (is_array($data) ? json_encode($data) : $data);
     }
+    
+    $log_entry .= " | User: " . (is_user_logged_in() ? get_current_user_id() : '0');
+    $log_entry .= " | Page: " . ($_SERVER['REQUEST_URI'] ?? 'unknown');
+    
+    error_log($log_entry);
 }
-// Use priority 5 to ensure it runs early in the init hook, but not before init
-add_action('init', 'mmla_load_translations', 5);
-
-function mmla_disable_plugin_translation_loading() {
-    // Remove WPForms translation loading
-    if (class_exists('WPForms')) {
-        remove_action('plugins_loaded', array(WPForms(), 'load_textdomain'), 10);
-    }
-}
-add_action('plugins_loaded', 'mmla_disable_plugin_translation_loading', 5);
 
 /**
- * Suppress specific translation loading notices
+ * Encryption key for referral data (AES). Use PORTAL_ENCRYPTION_KEY in wp-config to override.
  */
-function mmla_suppress_translation_notices() {
-    set_error_handler(function($errno, $errstr) {
-        if (strpos($errstr, '_load_textdomain_just_in_time') !== false) {
-            return true; // Suppress this specific error
+if (!function_exists('get_encryption_key')) {
+    function get_encryption_key() {
+        if (defined('PORTAL_ENCRYPTION_KEY') && PORTAL_ENCRYPTION_KEY !== '') {
+            return PORTAL_ENCRYPTION_KEY;
         }
-        return false; // Let PHP handle other errors
-    }, E_NOTICE);
+        if (defined('AUTH_KEY') && AUTH_KEY !== '') {
+            return AUTH_KEY;
+        }
+        return 'portal-referral-key-16';
+    }
 }
-add_action('plugins_loaded', 'mmla_suppress_translation_notices', 1);
 
-// Suppress specific WordPress notices
-add_action('init', function() {
-    // Remove translation loading notices
-    remove_action('_wp_die_handler', '_default_wp_die_handler');
+// Add this to your theme's functions.php or portal plugin
+add_action('user_register', function($user_id) {
+    error_log("=== USER REGISTER HOOK FIRED ===");
+    error_log("User ID: " . $user_id);
+    $user = get_userdata($user_id);
+    error_log("Username: " . $user->user_login);
+    error_log("Email: " . $user->user_email);
     
-    // Custom error handler to suppress translation notices
-    set_error_handler(function($errno, $errstr, $errfile, $errline) {
-        if (strpos($errstr, '_load_textdomain_just_in_time') !== false) {
-            return true; // Suppress this error
-        }
-        if (strpos($errstr, 'Translation loading') !== false) {
-            return true; // Suppress translation errors
-        }
-        return false; // Let PHP handle other errors normally
-    }, E_ALL);
+    // Check if portal user record exists
+    global $wpdb;
+    $portal_user = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d",
+        $user_id
+    ));
+    error_log("Portal user record: " . print_r($portal_user, true));
+}, 10, 1);
+
+// Load portal React app loader and auth (after portal_debug exists)
+require_once get_stylesheet_directory() . '/portal-loader.php';
+if (is_readable(get_stylesheet_directory() . '/functions-portal-auth-enhanced.php')) {
+    require_once get_stylesheet_directory() . '/functions-portal-auth-enhanced.php';
+}
+
+// ============================================
+// 0. NO-CACHE FOR LOGIN (fresh nonce)
+// ============================================
+add_action('template_redirect', function() {
+    if (is_page('portal-login') || is_page('register')) {
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+    }
+}, 1);
+add_action('wp_head', function() {
+    if (is_page('portal-login') || is_page('register')) {
+        echo '<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">';
+        echo '<meta http-equiv="Pragma" content="no-cache">';
+        echo '<meta http-equiv="Expires" content="0">';
+    }
 }, 1);
 
-
-// Test deployment comment
-
-if (!defined('ABSPATH')) {
-    exit; // Exit if accessed directly
-}
-
-/**
- * Environment detection function - Fixed version
- */
-function is_local_environment() {
-    $http_host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
-    $server_name = isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : '';
-    $remote_addr = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
+// ============================================
+// 1. PORTAL PAGE DETECTION
+// ============================================
+function is_portal_page() {
+    global $post;
+    if (is_admin() || !$post) return false;
     
-    return (
-        strpos($http_host, 'localhost') !== false || 
-        strpos($server_name, 'localhost') !== false ||
-        $remote_addr === '127.0.0.1'
-    );
-}
-
-/**
- * Fix Elementor softDeprecated error - More robust approach
- */
-function fix_elementor_soft_deprecated() {
-    ?>
-    <script type="text/javascript">
-    (function() {
-        function fixElementorDeprecated() {
-            if (typeof window.elementorCommon !== 'undefined') {
-                if (!window.elementorCommon.helpers) {
-                    window.elementorCommon.helpers = {};
-                }
-                if (!window.elementorCommon.helpers.softDeprecated) {
-                    window.elementorCommon.helpers.softDeprecated = function(name, version, replacement) {
-                        if (console && console.warn) {
-                            console.warn('Elementor: ' + name + ' is deprecated since ' + version + (replacement ? '. Use ' + replacement + ' instead.' : '.'));
-                        }
-                    };
-                }
-            } else {
-                setTimeout(fixElementorDeprecated, 100);
-            }
+    // Direct slugs
+    $portal_slugs = [
+        'portal', 'dashboard', 'portal-profile', 'portal-resources',
+        'portal-referrals', 'portal-login', 'register', 'contact',
+        'profile', 'resources', 'referrals', 'login'  // Added child page slugs
+    ];
+    
+    // Check if it's a child of portal
+    if ($post->post_parent) {
+        $parent = get_post($post->post_parent);
+        if ($parent && $parent->post_name === 'portal') {
+            return true;
         }
-        
-        fixElementorDeprecated();
-        
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', fixElementorDeprecated);
-        } else {
-            fixElementorDeprecated();
-        }
-    })();
-    </script>
-    <?php
-}
-add_action('wp_head', 'fix_elementor_soft_deprecated', 1);
-
-/**
- * Properly load jQuery
- */
-function fix_jquery_loading() {
-    if (!is_admin()) {
-        wp_deregister_script('jquery');
-        wp_register_script('jquery', includes_url('/js/jquery/jquery.min.js'), array(), false, false);
-        wp_enqueue_script('jquery');
     }
+    
+    return in_array($post->post_name, $portal_slugs);
 }
-add_action('wp_enqueue_scripts', 'fix_jquery_loading', 1);
 
-// Only apply port fixes on local environment
-if (is_local_environment()) {
-    /**
-     * Fix port number in URLs
-     */
-    function fix_port_in_urls($url) {
-        if (strpos($url, 'http://localhost/') === 0) {
-            $url = str_replace('http://localhost/', 'http://localhost:8080/', $url);
-        }
-        return $url;
+// ============================================
+// 2. ENQUEUE PORTAL ASSETS
+// ============================================
+add_action('wp_enqueue_scripts', function() {
+    if (!is_portal_page()) return;
+    
+    global $post;
+    
+    // Dequeue theme/Elementor scripts on portal pages
+    wp_dequeue_script('elementor-frontend');
+    wp_dequeue_script('elementor-pro-frontend');
+    wp_dequeue_style('elementor-frontend');
+    
+    $dist_path = get_stylesheet_directory() . '/portal/dist';
+    $dist_url = get_stylesheet_directory_uri() . '/portal/dist';
+    
+    // CSS
+    if (file_exists("$dist_path/portal.css")) {
+        wp_enqueue_style('portal-css', "$dist_url/portal.css", [], filemtime("$dist_path/portal.css"));
     }
+    
+    // JS
+    if (file_exists("$dist_path/portal.js")) {
+        wp_enqueue_script('portal-js', "$dist_url/portal.js", ['wp-element'], filemtime("$dist_path/portal.js"), true);
+        
+        $current_user = wp_get_current_user();
+        
+        wp_localize_script('portal-js', 'wpPortalData', [
+            'ajaxUrl'       => admin_url('admin-ajax.php'),
+            'restUrl'       => rest_url('portal/v1/'),
+            'siteUrl'       => home_url('/'),
+            'nonce'         => wp_create_nonce('portal_nonce'),
+            'restNonce'     => wp_create_nonce('wp_rest'),
+            'currentPage'   => $post->post_name,
+            'isLoggedIn'    => is_user_logged_in(),
+            'logoutUrl'     => wp_logout_url(home_url('/portal-login/')),
+            'user'          => is_user_logged_in() ? [
+                'id'          => $current_user->ID,
+                'email'       => $current_user->user_email,
+                'displayName' => $current_user->display_name,
+                'firstName'   => get_user_meta($current_user->ID, 'first_name', true),
+                'lastName'    => get_user_meta($current_user->ID, 'last_name', true)
+            ] : null
+        ]);
+    }
+}, 9999);
 
-    // Apply to all URL filters
-    add_filter('home_url', 'fix_port_in_urls', 99);
-    add_filter('site_url', 'fix_port_in_urls', 99);
-    add_filter('page_link', 'fix_port_in_urls', 99);
-    add_filter('post_link', 'fix_port_in_urls', 99);
-    add_filter('get_permalink', 'fix_port_in_urls', 99);
-    add_filter('the_permalink', 'fix_port_in_urls', 99);
-    add_filter('wp_redirect', 'fix_port_in_urls', 99);
-    add_filter('redirect_canonical', 'fix_port_in_urls', 99);
-
-    /**
-     * Add port fix script with proper jQuery dependency
-     */
-    function add_port_fix_script() {
+// ============================================
+// 3. PORTAL TEMPLATE OUTPUT
+// ============================================
+add_action('template_redirect', function() {
+    if (!is_portal_page()) return;
+    
+    // Add styles to head
+    add_action('wp_head', function() {
         ?>
-        <script type="text/javascript">
-        (function() {
-            function waitForJQuery() {
-                if (typeof jQuery !== 'undefined') {
-                    jQuery(document).ready(function($) {
-                        // Fix all links that are missing port
-                        $('a').each(function() {
-                            var href = $(this).attr('href');
-                            if (href && href.indexOf('http://localhost/') === 0) {
-                                $(this).attr('href', href.replace('http://localhost/', 'http://localhost:8080/'));
-                            }
-                        });
-                        
-                        // Fix Elementor buttons specifically
-                        $('.elementor-button').each(function() {
-                            var href = $(this).attr('href');
-                            if (href && href.indexOf('http://localhost/') === 0) {
-                                $(this).attr('href', href.replace('http://localhost/', 'http://localhost:8080/'));
-                            }
-                        });
-                    });
-                } else {
-                    setTimeout(waitForJQuery, 100);
-                }
+        <style>
+            /* Hide theme header/footer */
+            header, .site-header, #masthead, footer, .site-footer, 
+            .ct-header, .ct-footer, #colophon { display: none !important; }
+            
+            body { margin: 0; padding: 0; font-family: 'Inter', -apple-system, sans-serif; }
+            
+            /* Portal Header */
+            .portal-header {
+                background: linear-gradient(135deg, #0A3D62 0%, #1a5a8a 50%, #2980b9 100%);
+                padding: 0;
+                position: sticky;
+                top: 0;
+                z-index: 9999;
+                box-shadow: 0 4px 20px rgba(10, 61, 98, 0.4);
             }
-            waitForJQuery();
-        })();
-        </script>
+            .portal-header-inner {
+                max-width: 1400px;
+                margin: 0 auto;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 12px 24px;
+            }
+            .portal-logo {
+                color: white;
+                font-size: 18px;
+                font-weight: 700;
+                text-decoration: none;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .portal-logo img {
+                height: 45px;
+                width: auto;
+            }
+            .portal-nav {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
+            .portal-nav a {
+                color: rgba(255,255,255,0.85);
+                text-decoration: none;
+                padding: 10px 18px;
+                border-radius: 25px;
+                font-weight: 500;
+                font-size: 14px;
+                transition: all 0.3s ease;
+            }
+            .portal-nav a:hover, .portal-nav a.active {
+                background: rgba(255,255,255,0.2);
+                color: white;
+            }
+            .portal-nav .logout-btn {
+                background: linear-gradient(135deg, #e74c3c, #c0392b);
+                color: white !important;
+                margin-left: 10px;
+            }
+            .portal-nav .logout-btn:hover {
+                background: linear-gradient(135deg, #c0392b, #a93226);
+                transform: translateY(-1px);
+            }
+            .back-to-site {
+                background: rgba(255,255,255,0.15);
+                border: 1px solid rgba(255,255,255,0.3);
+                backdrop-filter: blur(10px);
+            }
+            
+            #portal-root {
+                min-height: calc(100vh - 70px);
+            }
+            
+            /* Loading state */
+            .portal-init-loading {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-height: 400px;
+                background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            }
+            .portal-init-loading h2 {
+                color: #0A3D62;
+                margin-bottom: 10px;
+            }
+            .portal-init-loading p {
+                color: #64748b;
+            }
+            .spinner {
+                width: 50px;
+                height: 50px;
+                border: 4px solid #e2e8f0;
+                border-top-color: #0A3D62;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin: 20px 0;
+            }
+            @keyframes spin {
+                to { transform: rotate(360deg); }
+            }
+        </style>
         <?php
+    }, 999);
+    
+    // Add header HTML – all links use home_url() so Register/Login go to correct pages
+    add_action('wp_body_open', function() {
+        global $post;
+        $current = $post ? $post->post_name : '';
+        $is_logged_in = is_user_logged_in();
+        $logout_url = wp_logout_url(home_url('/portal-login/'));
+        $logo = home_url('/wp-content/uploads/2024/03/2018_04_01_mmla_logo-removebg-preview.png');
+        ?>
+        <div class="portal-header">
+            <div class="portal-header-inner">
+                <a href="<?php echo esc_url(home_url('/portal/')); ?>" class="portal-logo">
+                    <img src="<?php echo esc_url($logo); ?>" alt="MMLA" onerror="this.style.display='none'">
+                    <span>Provider Portal</span>
+                </a>
+                <nav class="portal-nav">
+                    <?php if ($is_logged_in): ?>
+                        <a href="<?php echo esc_url(home_url('/dashboard/')); ?>" class="<?php echo $current === 'dashboard' ? 'active' : ''; ?>">Dashboard</a>
+                        <a href="<?php echo esc_url(home_url('/portal-profile/')); ?>" class="<?php echo $current === 'portal-profile' ? 'active' : ''; ?>">Profile</a>
+                        <a href="<?php echo esc_url(home_url('/portal-resources/')); ?>" class="<?php echo $current === 'portal-resources' ? 'active' : ''; ?>">Resources</a>
+                        <a href="<?php echo esc_url(home_url('/portal-referrals/')); ?>" class="<?php echo $current === 'portal-referrals' ? 'active' : ''; ?>">Referrals</a>
+                        <a href="<?php echo esc_url(home_url('/contact/')); ?>" class="<?php echo $current === 'contact' ? 'active' : ''; ?>">Contact</a>
+                        <a href="<?php echo esc_url($logout_url); ?>" class="logout-btn">Logout</a>
+                    <?php else: ?>
+                        <a href="<?php echo esc_url(home_url('/portal-login/')); ?>" class="<?php echo $current === 'portal-login' ? 'active' : ''; ?>">Login</a>
+                        <a href="<?php echo esc_url(home_url('/register/')); ?>" class="<?php echo $current === 'register' ? 'active' : ''; ?>">Register</a>
+                    <?php endif; ?>
+                    <a href="<?php echo esc_url(home_url('/')); ?>" class="back-to-site">Main Site</a>
+                </nav>
+            </div>
+        </div>
+        
+        <div id="portal-root">
+            <div class="portal-init-loading">
+                <div class="spinner"></div>
+                <h2>Loading Portal</h2>
+                <p>Preparing your experience...</p>
+            </div>
+        </div>
+        <?php
+    }, 1);
+});
+
+// ============================================
+// 4. PROTECT PORTAL PAGES
+// ============================================
+add_action('template_redirect', function() {
+    $protected = ['dashboard', 'portal-profile', 'portal-resources', 'portal-referrals'];
+    global $post;
+    
+    if ($post && in_array($post->post_name, $protected) && !is_user_logged_in()) {
+        wp_redirect(home_url('/portal-login/'));
+        exit;
     }
-    add_action('wp_footer', 'add_port_fix_script', 999);
-}
+}, 5);
 
-
-/**
- * Enqueue custom JavaScript for form submission
- */
-function blocksy_child_enqueue_scripts() {
-    if (is_page('refer-a-patient')) {
-        wp_enqueue_script(
-            'blocksy-child-form-submit',
-            get_stylesheet_directory_uri() . '/js/form-submit.js',
-            array('jquery', 'wpforms'),
-            '1.0',
-            true
+// ============================================
+// 5. LOGIN HANDLER (AJAX) – only if auth-enhanced not loaded
+// ============================================
+if (!function_exists('handle_portal_login')) {
+    add_action('wp_ajax_nopriv_portal_login', 'handle_portal_login');
+    add_action('wp_ajax_portal_login', 'handle_portal_login');
+    function handle_portal_login() {
+        $nonce = $_POST['nonce'] ?? '';
+        if (!wp_verify_nonce($nonce, 'portal_login_nonce') && !wp_verify_nonce($nonce, 'portal_nonce')) {
+            wp_send_json_error('Security check failed');
+            return;
+        }
+        $username = sanitize_user($_POST['username'] ?? '');
+        $password = $_POST['password'] ?? '';
+        $remember = !empty($_POST['remember']);
+        if (empty($username) || empty($password)) {
+            wp_send_json_error('Please enter username and password');
+            return;
+        }
+        $user = wp_signon([
+            'user_login' => $username,
+            'user_password' => $password,
+            'remember' => $remember
+        ], is_ssl());
+        if (is_wp_error($user)) {
+            wp_send_json_error('Invalid username or password');
+            return;
+        }
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->prefix . 'portal_users',
+            ['last_login' => current_time('mysql')],
+            ['wp_user_id' => $user->ID]
         );
+        wp_send_json_success([
+            'message' => 'Login successful',
+            'redirect' => home_url('/dashboard/'),
+            'user' => ['id' => $user->ID, 'displayName' => $user->display_name, 'email' => $user->user_email]
+        ]);
     }
 }
-add_action('wp_enqueue_scripts', 'blocksy_child_enqueue_scripts');
 
-/**
- * Fix form data inconsistencies
- */
-function fix_form_data_inconsistencies($form_data) {
-    if (isset($form_data['id']) && $form_data['id'] == 1479) {
-        // Fix field_id to match form ID
-        if (isset($form_data['field_id']) && $form_data['field_id'] != $form_data['id']) {
-            $form_data['field_id'] = $form_data['id'];
+// Fresh nonce for login form (avoids stale nonce when page is cached)
+add_action('wp_ajax_nopriv_portal_login_fresh_nonce', 'portal_login_fresh_nonce');
+add_action('wp_ajax_portal_login_fresh_nonce', 'portal_login_fresh_nonce');
+function portal_login_fresh_nonce() {
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    wp_send_json_success(['nonce' => wp_create_nonce('portal_login_form_nonce')]);
+}
+
+// ============================================
+// 6. REGISTER HANDLER (AJAX) – only if auth-enhanced not loaded
+// ============================================
+if (!function_exists('handle_portal_register')) {
+    add_action('wp_ajax_nopriv_portal_register', 'handle_portal_register');
+    function handle_portal_register() {
+        $nonce = $_POST['nonce'] ?? '';
+        if (!wp_verify_nonce($nonce, 'portal_register_nonce') && !wp_verify_nonce($nonce, 'portal_nonce')) {
+            wp_send_json_error('Security check failed');
+            return;
         }
-        
-        // Fix created date
-        if (isset($form_data['created'])) {
-            $form_data['created'] = current_time('mysql');
-        }
+    
+    $username   = sanitize_user($_POST['username'] ?? '');
+    $email      = sanitize_email($_POST['email'] ?? '');
+    $password   = $_POST['password'] ?? '';
+    $first_name = sanitize_text_field($_POST['first_name'] ?? '');
+    $last_name  = sanitize_text_field($_POST['last_name'] ?? '');
+    $practice   = sanitize_text_field($_POST['practice'] ?? '');
+    
+    if (empty($username) || empty($email) || empty($password)) {
+        wp_send_json_error('Please fill in all required fields');
+        return;
     }
     
-    return $form_data;
-}
-add_filter('wpforms_frontend_form_data', 'fix_form_data_inconsistencies', 10, 1);
-
-/**
- * Debug admin notification email delivery
- */
-function debug_admin_notification_email($args) {
-    if (isset($args['to']) && (
-        is_array($args['to']) && in_array('nick.yefimov@mobilemedicalla.com', $args['to']) ||
-        $args['to'] === 'nick.yefimov@mobilemedicalla.com'
-    )) {
-        error_log('Admin notification email debug:', 3, WP_CONTENT_DIR . '/debug.log');
-        error_log('To: ' . print_r($args['to'], true), 3, WP_CONTENT_DIR . '/debug.log');
-        error_log('Subject: ' . $args['subject'], 3, WP_CONTENT_DIR . '/debug.log');
-        error_log('Headers: ' . print_r($args['headers'], true), 3, WP_CONTENT_DIR . '/debug.log');
-        
-        // Add BCC to your verified email
-        if (!isset($args['headers']) || !is_array($args['headers'])) {
-            $args['headers'] = [];
-        }
-        $args['headers'][] = 'Bcc: nyef40@gmail.com';
+    if (username_exists($username)) {
+        wp_send_json_error('Username already exists');
+        return;
     }
     
-    return $args;
-}
-add_filter('wp_mail', 'debug_admin_notification_email', 1000);
-
-/**
- * Register the validation_url smart tag
- */
-function wpforms_smart_tags($tags) {
-    $tags['validation_url'] = 'Validation URL';
-    return $tags;
-}
-add_filter('wpforms_smart_tags', 'wpforms_smart_tags');
-
-/**
- * Get encryption key for patient data
- */
-function get_encryption_key() {
-    if (defined('MMLA_ENCRYPTION_KEY')) {
-        return MMLA_ENCRYPTION_KEY;
+    if (email_exists($email)) {
+        wp_send_json_error('Email already registered');
+        return;
     }
     
-    if (defined('SECURE_AUTH_KEY')) {
-        return substr(SECURE_AUTH_KEY, 0, 16);
+    // Create WordPress user
+    $user_id = wp_create_user($username, $password, $email);
+    
+    if (is_wp_error($user_id)) {
+        wp_send_json_error($user_id->get_error_message());
+        return;
     }
     
-    return 'mmla_2025';
+    // Update user meta
+    update_user_meta($user_id, 'first_name', $first_name);
+    update_user_meta($user_id, 'last_name', $last_name);
+    wp_update_user(['ID' => $user_id, 'display_name' => "$first_name $last_name"]);
+    
+    // Generate verification token BEFORE insert
+    $token = wp_generate_password(32, false, false);
+    $token_hash = hash('sha256', $token);
+    $expiry = date('Y-m-d H:i:s', strtotime('+24 hours'));
+    
+    // Insert into portal_users WITH the token
+    global $wpdb;
+    $inserted = $wpdb->insert($wpdb->prefix . 'portal_users', [
+        'wp_user_id'       => $user_id,
+        'username'         => $username,
+        'email'            => $email,
+        'first_name'       => $first_name,
+        'last_name'        => $last_name,
+        'practice'         => $practice,
+        'email_verified'   => 0,
+        'validation_token' => $token_hash,
+        'token_expiry'     => $expiry,
+        'created_at'       => current_time('mysql')
+    ]);
+    
+    if (!$inserted) {
+        error_log("[Portal] Failed to insert portal_users record for user $user_id");
+    }
+    
+    // Now send verification email (token is already in DB)
+    send_verification_email_direct($user_id, $email, $first_name, $token);
+    
+    wp_send_json_success([
+        'message'  => 'Registration successful! Please check your email to verify your account.',
+        'redirect' => home_url('/portal-login/?registered=1')
+    ]);
+    }
 }
 
 /**
- * Get HTML email template with styled validation button
+ * Send verification email directly (not via hook)
  */
-function get_provider_email_template($provider_name, $validation_url) {
-    return '
+function send_verification_email_direct($user_id, $email, $first_name, $token) {
+    // Build verification URL with the raw token
+    $verify_url = add_query_arg([
+        'action' => 'verify_portal_email',
+        'token'  => $token,
+        'uid'    => $user_id
+    ], home_url('/'));
+    
+    $subject = 'Verify Your Email - Mobile Medical LA Provider Portal';
+    
+    $message = '
     <!DOCTYPE html>
     <html>
     <head>
-        <meta charset="utf-8">
+        <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Email Validation - Mobile Medical LA</title>
     </head>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                <div style="text-align: center; margin-bottom: 30px;">
-                    <h1 style="color: #0066cc; margin: 0; font-size: 24px;">Mobile Medical LA</h1>
-                </div>
-                
-                <h2 style="color: #333; margin-top: 0;">Email Validation Required</h2>
-                
-                <p>Dear ' . esc_html($provider_name) . ',</p>
-                
-                <p>Thank you for referring a patient to Mobile Medical LA. Please validate your email address by clicking the button below:</p>
-                
-                <div style="text-align: center; margin: 30px 0;">
-                    <a href="' . esc_url($validation_url) . '" style="display: inline-block; background-color: #0066cc; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px; border: none; cursor: pointer;">Validate Email Address</a>
-                </div>
-                
-                <p>If the button above doesn\'t work, you can copy and paste this link into your browser:</p>
-                <p style="word-break: break-all; color: #666; background: #f9f9f9; padding: 10px; border-radius: 4px; font-size: 14px;">' . esc_url($validation_url) . '</p>
-                
-                <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 14px;">
-                    <p>Best regards,<br>
-                    <strong>Mobile Medical LA Team</strong></p>
-                </div>
-            </div>
-        </div>
+    <body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f4f7fa;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f7fa; padding: 40px 20px;">
+            <tr>
+                <td align="center">
+                    <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+                        <tr>
+                            <td style="background: linear-gradient(135deg, #0A3D62 0%, #2980b9 100%); padding: 30px 40px; text-align: center;">
+                                <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Mobile Medical LA</h1>
+                                <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0 0; font-size: 14px;">Provider Portal</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 40px;">
+                                <h2 style="color: #1e293b; margin: 0 0 20px 0; font-size: 22px;">Welcome, ' . esc_html($first_name ?: 'Provider') . '!</h2>
+                                <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                                    Thank you for registering with the Mobile Medical LA Provider Portal. To complete your registration and access all portal features, please verify your email address.
+                                </p>
+                                <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+                                    Click the button below to verify your email:
+                                </p>
+                                <table width="100%" cellpadding="0" cellspacing="0">
+                                    <tr>
+                                        <td align="center">
+                                            <a href="' . esc_url($verify_url) . '" style="display: inline-block; background: linear-gradient(135deg, #0A3D62 0%, #2980b9 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                                                Verify Email Address
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                                <p style="color: #64748b; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
+                                    This verification link will expire in <strong>24 hours</strong>.
+                                </p>
+                                <p style="color: #64748b; font-size: 14px; line-height: 1.6; margin: 20px 0 0 0;">
+                                    If the button does not work, copy and paste this link into your browser:
+                                </p>
+                                <p style="color: #0A3D62; font-size: 12px; word-break: break-all; margin: 10px 0 0 0;">
+                                    ' . esc_url($verify_url) . '
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="background-color: #f8fafc; padding: 24px 40px; border-top: 1px solid #e2e8f0;">
+                                <p style="color: #94a3b8; font-size: 12px; margin: 0; text-align: center;">
+                                    If you did not create an account, please ignore this email.
+                                </p>
+                                <p style="color: #94a3b8; font-size: 12px; margin: 10px 0 0 0; text-align: center;">
+                                    &copy; ' . date('Y') . ' Mobile Medical LA. All rights reserved.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
     </body>
     </html>';
-}
-
-/**
- * Helper function to get validation URL
- */
-function get_validation_url($entry_id) {
-    global $wpdb;
     
-    // Try transient first
-    $transient_key = 'wpforms_validation_url_' . $entry_id;
-    $validation_url = get_transient($transient_key);
-    // error_log("Transient lookup for entry_id $entry_id: " . ($validation_url ? "Found" : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
-    
-    if ($validation_url) {
-        return $validation_url;
-    }
-    
-    // Try option next
-    $validation_url = get_option('wpforms_validation_url_' . $entry_id);
-    // error_log("Option lookup for entry_id $entry_id: " . ($validation_url ? "Found" : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
-    
-    if ($validation_url) {
-        return $validation_url;
-    }
-    
-    // Try direct database lookup
-    try {
-        // Get provider email from entry
-        $provider_email = $wpdb->get_var($wpdb->prepare(
-            "SELECT value FROM {$wpdb->prefix}wpforms_entry_fields 
-             WHERE entry_id = %d AND field_id = 15",
-            $entry_id
-        ));
-        
-        if ($provider_email) {
-            // error_log("Found provider email for entry $entry_id: $provider_email", 3, WP_CONTENT_DIR . '/debug.log');
-            
-            // Use direct query with BINARY to force case-sensitive comparison
-            $submission = $wpdb->get_row($wpdb->prepare(
-                "SELECT submission_id, validation_token 
-                 FROM {$wpdb->prefix}referral_submissions 
-                 WHERE provider_email = %s 
-                 ORDER BY submission_id DESC LIMIT 1",
-                $provider_email
-            ));
-            
-            if ($submission) {
-                $validation_url = add_query_arg(
-                    array(
-                        'action' => 'validate_email',
-                        'token' => $submission->validation_token,
-                        'submission_id' => $submission->submission_id
-                    ),
-                    home_url()
-                );
-                
-                // Save for future use
-                set_transient($transient_key, $validation_url, 14 * DAY_IN_SECONDS);
-                update_option('wpforms_validation_url_' . $entry_id, $validation_url, false);
-                
-                // error_log("Created validation URL from submission: $validation_url", 3, WP_CONTENT_DIR . '/debug.log');
-                return $validation_url;
-            }
-        }
-    } catch (Exception $e) {
-        error_log("Error in get_validation_url: " . $e->getMessage(), 3, WP_CONTENT_DIR . '/debug.log');
-    }
-    
-    // Last resort - get the most recent submission
-    try {
-        $submission = $wpdb->get_row(
-            "SELECT submission_id, validation_token 
-             FROM {$wpdb->prefix}referral_submissions 
-             ORDER BY submission_id DESC LIMIT 1"
-        );
-        
-        if ($submission) {
-            $validation_url = add_query_arg(
-                array(
-                    'action' => 'validate_email',
-                    'token' => $submission->validation_token,
-                    'submission_id' => $submission->submission_id
-                ),
-                home_url()
-            );
-            
-            // error_log("Last resort validation URL from most recent submission: $validation_url", 3, WP_CONTENT_DIR . '/debug.log');
-            return $validation_url;
-        }
-    } catch (Exception $e) {
-        error_log("Error in get_validation_url last resort: " . $e->getMessage(), 3, WP_CONTENT_DIR . '/debug.log');
-    }
-    
-    return false;
-}
-
-/**
- * Process validation_url smart tag with duplication prevention
- */
-function wpforms_smart_tag_process_validation_url($content, $tag, $form_data, $fields, $entry_id) {
-    error_log("Smart tag process called for entry_id: $entry_id", 3, WP_CONTENT_DIR . '/debug.log');
-
-    if (empty($entry_id)) {
-        error_log("Smart tag: No entry_id provided", 3, WP_CONTENT_DIR . '/debug.log');
-        return $content;
-    }
-
-    // Check if this content already has been processed
-    if (strpos($content, 'Validate Email Address') !== false) {
-        error_log("Smart tag: Content already processed, skipping", 3, WP_CONTENT_DIR . '/debug.log');
-        return $content;
-    }
-
-    $validation_url = get_validation_url($entry_id);
-    if ($validation_url) {
-        // Get provider name for personalized email
-        global $wpdb;
-        $provider_name = $wpdb->get_var($wpdb->prepare(
-            "SELECT value FROM {$wpdb->prefix}wpforms_entry_fields 
-             WHERE entry_id = %d AND field_id = 2",
-            $entry_id
-        ));
-        
-        if (!$provider_name) {
-            $provider_name = 'Doctor';
-        }
-        
-        // Return complete HTML email template
-        $html_template = get_provider_email_template($provider_name, $validation_url);
-        error_log("Smart tag replaced with HTML template", 3, WP_CONTENT_DIR . '/debug.log');
-        return $html_template;
-    }
-
-    error_log("Smart tag: No validation_url found for entry_id: $entry_id", 3, WP_CONTENT_DIR . '/debug.log');
-    return $content;
-}
-add_filter('wpforms_smart_tag_process_validation_url', 'wpforms_smart_tag_process_validation_url', 10, 5);
-
-/**
- * Modify email content to include validation URL
- */
-function modify_email_content($message, $notification = null, $form_data = null, $fields = null, $entry_id = null) {
-    global $wpdb;
-    // error_log("Email modification called with " . count(func_get_args()) . " parameters", 3, WP_CONTENT_DIR . '/debug.log');
-    
-    // Skip if no validation_url placeholder
-    if (empty($message) || strpos($message, '{validation_url}') === false) {
-        return $message;
-    }
-    
-    // Try to get the entry ID from parameters
-    if (is_array($notification) && isset($notification['entry_id'])) {
-        $entry_id = absint($notification['entry_id']);
-        error_log("Got entry_id from notification: $entry_id", 3, WP_CONTENT_DIR . '/debug.log');
-    } elseif (empty($entry_id) && isset($GLOBALS['wpforms_process']) && !empty($GLOBALS['wpforms_process']->entry_id)) {
-        $entry_id = $GLOBALS['wpforms_process']->entry_id;
-        error_log("Got entry_id from global process: $entry_id", 3, WP_CONTENT_DIR . '/debug.log');
-    } elseif (empty($entry_id)) {
-        $entry_id = $wpdb->get_var("SELECT MAX(entry_id) FROM {$wpdb->prefix}wpforms_entries");
-        error_log("Got most recent entry_id: $entry_id", 3, WP_CONTENT_DIR . '/debug.log');
-    }
-    
-    if ($entry_id) {
-        $validation_url = get_validation_url($entry_id);
-        if ($validation_url) {
-            // Get provider name for personalized email
-            $provider_name = $wpdb->get_var($wpdb->prepare(
-                "SELECT value FROM {$wpdb->prefix}wpforms_entry_fields 
-                 WHERE entry_id = %d AND field_id = 2",
-                $entry_id
-            ));
-            
-            if (!$provider_name) {
-                $provider_name = 'Doctor';
-            }
-            
-            // Replace with complete HTML template
-            $html_template = get_provider_email_template($provider_name, $validation_url);
-            $message = str_replace('{validation_url}', $html_template, $message);
-            error_log("Email modified with HTML template", 3, WP_CONTENT_DIR . '/debug.log');
-        } else {
-            error_log("No validation URL found for entry $entry_id", 3, WP_CONTENT_DIR . '/debug.log');
-        }
-    } else {
-        error_log("No entry ID found for email notification", 3, WP_CONTENT_DIR . '/debug.log');
-    }
-    
-    return $message;
-}
-add_filter('wpforms_emails_notifications_message', 'modify_email_content', 20, 5);
-add_filter('wpforms_email_message', 'modify_email_content', 20, 5);
-
-/**
- * Enhanced last chance email modification with email type detection
- */
-function last_chance_email_modification($args) {
-    global $wpdb;
-    // error_log("Last chance email modification", 3, WP_CONTENT_DIR . '/debug.log');
-
-    if (!isset($args['message']) || strpos($args['message'], '{validation_url}') === false) {
-        return $args;
-    }
-
-    // Get recipient email
-    $to = isset($args['to']) ? $args['to'] : '';
-    if (is_array($to)) {
-        $to = reset($to);
-    }
-    
-    // error_log("Email recipient: $to", 3, WP_CONTENT_DIR . '/debug.log');
-    
-    // Check if this is an admin email (should not have validation links)
-    $admin_emails = [
-        'nick.yefimov@mobilemedicalla.com',
-        'nyef40@gmail.com',
-        get_option('admin_email')
+    $headers = [
+        'Content-Type: text/html; charset=UTF-8',
+        'From: Mobile Medical LA Portal <nick.yefimov@mobilemedicalla.com>'
     ];
     
-    if (in_array($to, $admin_emails)) {
-        // error_log("Admin email detected - removing validation URL", 3, WP_CONTENT_DIR . '/debug.log');
-        // For admin emails, just remove the validation URL placeholder
-        $args['message'] = str_replace('{validation_url}', '', $args['message']);
-        return $args;
+    $sent = wp_mail($email, $subject, $message, $headers);
+    
+    if ($sent) {
+        error_log("[Portal] Verification email sent to $email for user $user_id");
+    } else {
+        error_log("[Portal] Failed to send verification email to $email");
     }
     
-    // This is a provider email - add validation URL
-    // error_log("Provider email detected - adding validation URL", 3, WP_CONTENT_DIR . '/debug.log');
+    return $sent;
+}
+
+// ============================================
+// EMAIL VERIFICATION SYSTEM
+// ============================================
+
+/**
+ * Send verification email after portal registration
+ * Hooks into user_register to send email automatically
+ */
+// add_action('user_register', 'send_portal_verification_email', 20, 1);
+
+function send_portal_verification_email($user_id) {
+    global $wpdb;
     
-    if (!empty($to)) {
-        // Try to find the entry ID based on the recipient email
-        $entry_id = $wpdb->get_var($wpdb->prepare(
-            "SELECT entry_id FROM {$wpdb->prefix}wpforms_entry_fields 
-             WHERE field_id = 15 AND value = %s 
-             ORDER BY id DESC LIMIT 1",
-            $to
-        ));
-        
-        if ($entry_id) {
-            // error_log("Found entry ID $entry_id for email $to", 3, WP_CONTENT_DIR . '/debug.log');
-            $validation_url = get_validation_url($entry_id);
-            
-            if ($validation_url) {
-                // Get provider name
-                $provider_name = $wpdb->get_var($wpdb->prepare(
-                    "SELECT value FROM {$wpdb->prefix}wpforms_entry_fields 
-                     WHERE entry_id = %d AND field_id = 2",
-                    $entry_id
-                ));
-                
-                if (!$provider_name) {
-                    $provider_name = 'Doctor';
-                }
-                
-                // Replace with HTML template
-                $html_template = get_provider_email_template($provider_name, $validation_url);
-                $args['message'] = str_replace('{validation_url}', $html_template, $args['message']);
-                // error_log("Provider email: validation URL added", 3, WP_CONTENT_DIR . '/debug.log');
-            }
-        }
+    $user = get_userdata($user_id);
+    if (!$user) {
+        error_log("[Portal] send_portal_verification_email: User not found for ID $user_id");
+        return false;
     }
+    
+    // Generate secure verification token
+    $token = wp_generate_password(32, false, false);
+    $token_hash = hash('sha256', $token);
+    $expiry = date('Y-m-d H:i:s', strtotime('+24 hours'));
+    
+    // Store token in portal_users table
+    $table = $wpdb->prefix . 'portal_users';
+    
+    // First check if validation_token column exists, if not add it
+    $column_exists = $wpdb->get_results("SHOW COLUMNS FROM $table LIKE 'validation_token'");
+    if (empty($column_exists)) {
+        $wpdb->query("ALTER TABLE $table ADD COLUMN validation_token VARCHAR(64) NULL");
+        $wpdb->query("ALTER TABLE $table ADD COLUMN token_expiry DATETIME NULL");
+    }
+    
+    // Update the portal user with token
+    $updated = $wpdb->update(
+        $table,
+        [
+            'validation_token' => $token_hash,
+            'token_expiry' => $expiry
+        ],
+        ['wp_user_id' => $user_id]
+    );
 
-    return $args;
+    // Add debug logging
+    error_log("[Portal] Token update result: " . ($updated !== false ? 'success' : 'failed') . " for user $user_id");
+    error_log("[Portal] Stored token hash: $token_hash");
+    
+    if ($updated === false) {
+        error_log("[Portal] Failed to store validation token for user $user_id");
+        return false;
+    }
+    
+    // Build verification URL (use raw token, we'll hash it on verification)
+    $verify_url = add_query_arg([
+        'action' => 'verify_portal_email',
+        'token' => $token,
+        'uid' => $user_id
+    ], home_url('/'));
+    
+    // Get user details for email
+    $portal_user = $wpdb->get_row($wpdb->prepare(
+        "SELECT first_name FROM $table WHERE wp_user_id = %d",
+        $user_id
+    ));
+    $first_name = $portal_user->first_name ?: $user->display_name ?: 'Provider';
+    
+    // Build HTML email
+    $subject = 'Verify Your Email - Mobile Medical LA Provider Portal';
+    
+    $message = '
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f4f7fa;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f7fa; padding: 40px 20px;">
+            <tr>
+                <td align="center">
+                    <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+                        <!-- Header -->
+                        <tr>
+                            <td style="background: linear-gradient(135deg, #0A3D62 0%, #2980b9 100%); padding: 30px 40px; text-align: center;">
+                                <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Mobile Medical LA</h1>
+                                <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0 0; font-size: 14px;">Provider Portal</p>
+                            </td>
+                        </tr>
+                        
+                        <!-- Body -->
+                        <tr>
+                            <td style="padding: 40px;">
+                                <h2 style="color: #1e293b; margin: 0 0 20px 0; font-size: 22px;">Welcome, ' . esc_html($first_name) . '!</h2>
+                                
+                                <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                                    Thank you for registering with the Mobile Medical LA Provider Portal. To complete your registration and access all portal features, please verify your email address.
+                                </p>
+                                
+                                <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+                                    Click the button below to verify your email:
+                                </p>
+                                
+                                <!-- CTA Button -->
+                                <table width="100%" cellpadding="0" cellspacing="0">
+                                    <tr>
+                                        <td align="center">
+                                            <a href="' . esc_url($verify_url) . '" style="display: inline-block; background: linear-gradient(135deg, #0A3D62 0%, #2980b9 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                                                Verify Email Address
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                                
+                                <p style="color: #64748b; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
+                                    This verification link will expire in <strong>24 hours</strong>.
+                                </p>
+                                
+                                <p style="color: #64748b; font-size: 14px; line-height: 1.6; margin: 20px 0 0 0;">
+                                    If the button does not work, copy and paste this link into your browser:
+                                </p>
+                                <p style="color: #0A3D62; font-size: 12px; word-break: break-all; margin: 10px 0 0 0;">
+                                    ' . esc_url($verify_url) . '
+                                </p>
+                            </td>
+                        </tr>
+                        
+                        <!-- Footer -->
+                        <tr>
+                            <td style="background-color: #f8fafc; padding: 24px 40px; border-top: 1px solid #e2e8f0;">
+                                <p style="color: #94a3b8; font-size: 12px; margin: 0; text-align: center;">
+                                    If you did not create an account, please ignore this email.
+                                </p>
+                                <p style="color: #94a3b8; font-size: 12px; margin: 10px 0 0 0; text-align: center;">
+                                    &copy; ' . date('Y') . ' Mobile Medical LA. All rights reserved.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>';
+    
+    // Set HTML headers
+    $headers = [
+        'Content-Type: text/html; charset=UTF-8',
+        'From: Mobile Medical LA Portal <nick.yefimov@mobilemedicalla.com>'
+    ];
+    
+    // Send email
+    $sent = wp_mail($user->user_email, $subject, $message, $headers);
+    
+    if ($sent) {
+        error_log("[Portal] Verification email sent to {$user->user_email} for user $user_id");
+    } else {
+        error_log("[Portal] Failed to send verification email to {$user->user_email}");
+    }
+    
+    return $sent;
 }
-add_filter('wp_mail', 'last_chance_email_modification', 999);
 
 /**
- * Force WPForms to send HTML emails
+ * Handle email verification URL
+ * Intercepts requests with action=verify_portal_email
  */
-function force_wpforms_html_email($args) {
-    $args['headers'] = array('Content-Type: text/html; charset=UTF-8');
-    return $args;
-}
-add_filter('wpforms_email_send_args', 'force_wpforms_html_email', 10, 1);
+add_action('init', 'handle_portal_email_verification');
 
-/**
- * Send fallback admin notification
- */
-function send_fallback_admin_notification($fields, $entry, $form_data, $entry_id) {
-    if ($form_data['id'] != 1479) {
+function handle_portal_email_verification() {
+    if (!isset($_GET['action']) || $_GET['action'] !== 'verify_portal_email') {
         return;
     }
     
-    // Get form field values
-    $provider_name = isset($fields[2]['value']) ? sanitize_text_field($fields[2]['value']) : '';
-    $provider_practice = isset($fields[14]['value']) ? sanitize_text_field($fields[14]['value']) : '';
-    $provider_email = isset($fields[15]['value']) ? sanitize_email($fields[15]['value']) : '';
-    $provider_phone = isset($fields[16]['value']) ? sanitize_text_field($fields[16]['value']) : '';
-    $patient_name = isset($fields[18]['value']) ? sanitize_text_field($fields[18]['value']) : '';
-    $reason = isset($fields[23]['value']) ? sanitize_text_field($fields[23]['value']) : '';
+    $token = sanitize_text_field($_GET['token'] ?? '');
+    $user_id = absint($_GET['uid'] ?? 0);
     
-    // Store the notification in the database instead of sending email
+    if (empty($token) || empty($user_id)) {
+        wp_redirect(home_url('/portal/login/?error=invalid_link'));
+        exit;
+    }
+    
     global $wpdb;
-    $table_name = $wpdb->prefix . 'admin_notifications';
+    $table = $wpdb->prefix . 'portal_users';
     
-    // Create the table if it doesn't exist
-    $wpdb->query("
-        CREATE TABLE IF NOT EXISTS {$table_name} (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            provider_name VARCHAR(255),
-            provider_email VARCHAR(255),
-            patient_name VARCHAR(255),
-            reason VARCHAR(255),
-            submission_id INT,
-            created_at DATETIME,
-            is_read TINYINT DEFAULT 0
-        )
-    ");
+    // Hash the token to compare with stored hash
+    $token_hash = hash('sha256', $token);
     
-    // Get the most recent submission ID
-    $submission_id = $wpdb->get_var("SELECT MAX(submission_id) FROM {$wpdb->prefix}referral_submissions");
+    // Find portal user with matching token
+    $portal_user = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $table WHERE wp_user_id = %d AND validation_token = %s",
+        $user_id,
+        $token_hash
+    ));
+    error_log(message: "[Portal] Stored token for user $user_id: " . ($debug ? $debug->validation_token : 'NULL'));
     
-    // Insert the notification
-    $wpdb->insert(
-        $table_name,
-        array(
-            'provider_name' => $provider_name,
-            'provider_email' => $provider_email,
-            'patient_name' => $patient_name,
-            'reason' => $reason,
-            'submission_id' => $submission_id,
-            'created_at' => current_time('mysql'),
-            'is_read' => 0
-        )
+    if (!$portal_user) {
+        error_log("[Portal] Invalid verification token for user $user_id");
+        wp_redirect(home_url('/portal/login/?error=invalid_token'));
+        exit;
+    }
+    
+    // Check if token expired
+    if (!empty($portal_user->token_expiry) && strtotime($portal_user->token_expiry) < time()) {
+        error_log("[Portal] Verification token expired for user $user_id");
+        wp_redirect(home_url('/portal/login/?error=token_expired'));
+        exit;
+    }
+
+    
+    // Check if already verified
+    if ($portal_user->email_verified == 1) {
+        wp_redirect(home_url('/portal/login/?message=already_verified'));
+        exit;
+    }
+    
+    // Mark email as verified and clear token
+    $updated = $wpdb->update(
+        $table,
+        [
+            'email_verified' => 1,
+            'validation_token' => null,
+            'token_expiry' => null,
+            'updated_at' => current_time('mysql')
+        ],
+        ['wp_user_id' => $user_id]
     );
     
-    error_log("Admin notification stored in database for submission ID: $submission_id", 3, WP_CONTENT_DIR . '/debug.log');
+    if ($updated !== false) {
+        error_log("[Portal] Email verified successfully for user $user_id");
+        wp_redirect(home_url('/portal/login/?verified=1'));
+    } else {
+        error_log("[Portal] Failed to update email_verified for user $user_id");
+        wp_redirect(home_url('/portal/login/?error=verification_failed'));
+    }
+    exit;
+}
+
+/**
+ * Resend verification email (AJAX handler)
+ */
+add_action('wp_ajax_resend_verification_email', 'handle_resend_verification_email');
+add_action('wp_ajax_nopriv_resend_verification_email', 'handle_resend_verification_email');
+
+function handle_resend_verification_email() {
+    $email = sanitize_email($_POST['email'] ?? '');
     
-    // Try sending via alternative method
-    try {
-        // HTML version
-        $html_message = "<!DOCTYPE html>
-        <html>
-        <head>
-            <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                h1 { color: #0073aa; }
-                .details { background: #f9f9f9; padding: 15px; border-left: 4px solid #0073aa; }
-            </style>
-        </head>
-        <body>
-            <div class='container'>
-                <h1>New Patient Referral</h1>
-                <div class='details'>
-                    <p><strong>Provider:</strong> {$provider_name}</p>
-                    <p><strong>Practice:</strong> {$provider_practice}</p>
-                    <p><strong>Email:</strong> {$provider_email}</p>
-                    <p><strong>Phone:</strong> {$provider_phone}</p>
-                    <p><strong>Patient:</strong> {$patient_name}</p>
-                    <p><strong>Reason:</strong> {$reason}</p>
-                </div>
-                <p>Please log in to the admin dashboard to view full details.</p>
-            </div>
-        </body>
-        </html>";
-        
-        // Try using PHP's mail function directly as a last resort
-        $subject = 'New Patient Referral';
-        $headers = [
-            'Content-Type: text/html; charset=UTF-8',
-            'From: Mobile Medical LA <nyef40@gmail.com>',
-        ];
-        
-        // Only use this in development - not recommended for production
-        if (function_exists('mail')) {
-            $mail_result = mail('nick.yefimov@mobilemedicalla.com', $subject, $html_message, implode("\r\n", $headers));
-            error_log("PHP mail() function result: " . ($mail_result ? 'Success' : 'Failed'), 3, WP_CONTENT_DIR . '/debug.log');
-        }
-    } catch (Exception $e) {
-        error_log("Error sending alternative admin notification: " . $e->getMessage(), 3, WP_CONTENT_DIR . '/debug.log');
+    if (empty($email)) {
+        wp_send_json_error('Please provide your email address');
+        return;
+    }
+    
+    // Find user by email
+    $user = get_user_by('email', $email);
+    if (!$user) {
+        // Don't reveal if email exists or not for security
+        wp_send_json_success(['message' => 'If an account exists with this email, a verification link will be sent.']);
+        return;
+    }
+    
+    global $wpdb;
+    $table = $wpdb->prefix . 'portal_users';
+    
+    $portal_user = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $table WHERE wp_user_id = %d",
+        $user->ID
+    ));
+    
+    if (!$portal_user) {
+        wp_send_json_success(['message' => 'If an account exists with this email, a verification link will be sent.']);
+        return;
+    }
+    
+    // Check if already verified
+    if ($portal_user->email_verified == 1) {
+        wp_send_json_error('This email is already verified. Please login.');
+        return;
+    }
+    
+    // Send new verification email
+    $sent = send_portal_verification_email($user->ID);
+    
+    if ($sent) {
+        wp_send_json_success(['message' => 'Verification email sent! Please check your inbox.']);
+    } else {
+        wp_send_json_error('Failed to send verification email. Please try again later.');
     }
 }
 
 /**
- * Handle referral form submission
+ * Optional: Check email verification on login
+ * Uncomment if you want to require verification before login
  */
-function handle_referral_submission($fields, $entry, $form_data) {
-    // error_log("Form submission: Form ID = " . $form_data['id'], 3, WP_CONTENT_DIR . '/debug.log');
-    // error_log("Fields received: " . print_r(array_keys($fields), true), 3, WP_CONTENT_DIR . '/debug.log');
+/*
+add_filter('authenticate', 'check_email_verified_on_login', 30, 3);
 
-    if ($form_data['id'] != 1479) {
-        error_log("Not the referral form (ID " . $form_data['id'] . "), skipping", 3, WP_CONTENT_DIR . '/debug.log');
-        return $fields;
+function check_email_verified_on_login($user, $username, $password) {
+    if (is_wp_error($user)) {
+        return $user;
     }
-
-    // Get entry ID if available
-    $entry_id = isset($entry['id']) ? absint($entry['id']) : 0;
-    if (!$entry_id && isset($GLOBALS['wpforms_process']) && !empty($GLOBALS['wpforms_process']->entry_id)) {
-        $entry_id = $GLOBALS['wpforms_process']->entry_id;
+    
+    if (!$user || !($user instanceof WP_User)) {
+        return $user;
     }
-    // error_log("Entry ID for referral: " . ($entry_id ? $entry_id : "Not available"), 3, WP_CONTENT_DIR . '/debug.log');
-
-    static $processed_entries = [];
-    if ($entry_id && in_array($entry_id, $processed_entries)) {
-        error_log("Duplicate processing attempt for Entry ID = $entry_id, skipping", 3, WP_CONTENT_DIR . '/debug.log');
-        return $fields;
-    }
-    if ($entry_id) {
-        $processed_entries[] = $entry_id;
-    }
-
-    try {
-        global $wpdb;
-
-        $provider_name = isset($fields[2]['value']) ? sanitize_text_field($fields[2]['value']) : '';
-        $provider_practice = isset($fields[14]['value']) ? sanitize_text_field($fields[14]['value']) : '';
-        $provider_email = isset($fields[15]['value']) ? sanitize_email($fields[15]['value']) : '';
-        $provider_phone = isset($fields[16]['value']) ? sanitize_text_field($fields[16]['value']) : '';
-        $patient_name = isset($fields[18]['value']) ? sanitize_text_field($fields[18]['value']) : '';
-        $patient_email = isset($fields[19]['value']) ? sanitize_email($fields[19]['value']) : '';
-        $patient_phone = isset($fields[20]['value']) ? sanitize_text_field($fields[20]['value']) : '';
-        $insurance = isset($fields[21]['value']) ? sanitize_text_field($fields[21]['value']) : '';
-        $reason = isset($fields[23]['value']) ? sanitize_text_field($fields[23]['value']) : '';
-        $notes = isset($fields[24]['value']) ? sanitize_textarea_field($fields[24]['value']) : '';
-
-        // error_log("Provider Name: $provider_name, Email: $provider_email", 3, WP_CONTENT_DIR . '/debug.log');
-
-        $validation_token = wp_generate_uuid4();
-        // error_log("Generated validation token: $validation_token", 3, WP_CONTENT_DIR . '/debug.log');
-
-        $encryption_key = get_encryption_key();
-        $table_name = $wpdb->prefix . 'referral_submissions';
-
-        // Fix collation issues by using direct SQL without encryption first
-        $result = $wpdb->query($wpdb->prepare(
-            "INSERT INTO {$table_name} 
-             (provider_name, provider_practice, provider_email, provider_phone, 
-              patient_name, patient_email, patient_phone, insurance, 
-              reason, notes, validation_token, is_validated, created_at)
-             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s)",
-            $provider_name, $provider_practice, $provider_email, $provider_phone,
-            $patient_name, $patient_email, $patient_phone, $insurance,
-            $reason, $notes, $validation_token, 0, current_time('mysql')
-        ));
-
-        if ($result === false) {
-            error_log("Database insertion failed: " . $wpdb->last_error, 3, WP_CONTENT_DIR . '/debug.log');
-            return $fields;
-        }
-
-        $submission_id = $wpdb->insert_id;
-        error_log("Database insertion successful: $submission_id", 3, WP_CONTENT_DIR . '/debug.log');
-
-        // Now update with encryption
-        $wpdb->query($wpdb->prepare(
-            "UPDATE {$table_name} SET 
-             patient_name = AES_ENCRYPT(%s, %s),
-             patient_email = AES_ENCRYPT(%s, %s),
-             insurance = AES_ENCRYPT(%s, %s)
-             WHERE submission_id = %d",
-            $patient_name, $encryption_key,
-            $patient_email, $encryption_key,
-            $insurance, $encryption_key,
-            $submission_id
-        ));
-
-        $validation_url = add_query_arg(
-            array(
-                'action' => 'validate_email',
-                'token' => $validation_token,
-                'submission_id' => $submission_id
-            ),
-            home_url()
+    
+    global $wpdb;
+    $table = $wpdb->prefix . 'portal_users';
+    
+    $portal_user = $wpdb->get_row($wpdb->prepare(
+        "SELECT email_verified FROM $table WHERE wp_user_id = %d",
+        $user->ID
+    ));
+    
+    if ($portal_user && $portal_user->email_verified != 1) {
+        return new WP_Error(
+            'email_not_verified',
+            'Please verify your email before logging in. <a href="/portal/login/?resend=' . urlencode($user->user_email) . '">Resend verification email</a>'
         );
-
-        if ($entry_id) {
-            $transient_key = 'wpforms_validation_url_' . $entry_id;
-            $transient_set = set_transient($transient_key, $validation_url, 14 * DAY_IN_SECONDS);
-            // error_log("Transient set result: " . ($transient_set ? "Success" : "Failed"), 3, WP_CONTENT_DIR . '/debug.log');
-            $check_transient = get_transient($transient_key);
-            // error_log("Immediate transient check: " . ($check_transient ? $check_transient : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
-
-            update_option('wpforms_validation_url_' . $entry_id, $validation_url, true);
-            $check_option = get_option('wpforms_validation_url_' . $entry_id);
-            // error_log("Immediate option check: " . ($check_option ? $check_option : "Not found"), 3, WP_CONTENT_DIR . '/debug.log');
-        } else {
-            // error_log("No entry_id available, storing validation URL in global option", 3, WP_CONTENT_DIR . '/debug.log');
-            update_option('latest_validation_url', $validation_url, true);
-        }
-    } catch (Exception $e) {
-        error_log("Error in referral processing: " . $e->getMessage(), 3, WP_CONTENT_DIR . '/debug.log');
     }
-
-    return $fields;
+    
+    return $user;
 }
-add_action('wpforms_process', 'handle_referral_submission', 10, 3);
+*/
 
-/**
- * Handle referral validation
- */
-function handle_referral_validation() {
-    date_default_timezone_set('America/Los_Angeles');
 
-    if (isset($_GET['action']) && $_GET['action'] === 'validate_email' && 
-        isset($_GET['token']) && isset($_GET['submission_id'])) {
-        global $wpdb;
-        $token = sanitize_text_field($_GET['token']);
-        $submission_id = absint($_GET['submission_id']);
-        // error_log("Validation attempt: Token=$token, Submission ID=$submission_id", 3, WP_CONTENT_DIR . '/debug.log');
-
-        $table_name = $wpdb->prefix . 'referral_submissions';
-        $submission = $wpdb->get_row($wpdb->prepare(
-            "SELECT submission_id FROM {$table_name} 
-             WHERE validation_token = %s AND submission_id = %d AND is_validated = 0",
-            $token, $submission_id
-        ));
-
-        if ($submission) {
-            $result = $wpdb->update(
-                $table_name,
-                array('is_validated' => 1),
-                array('submission_id' => $submission->submission_id),
-                array('%d'),
-                array('%d')
-            );
-            if ($result === false) {
-                error_log("ERROR: Failed to update is_validated for submission_id=$submission_id: " . $wpdb->last_error, 3, WP_CONTENT_DIR . '/debug.log');
-                wp_die('Validation failed due to a database error.', 'Validation Error', array('response' => 500));
-            }
-            error_log("Validation successful: Updated is_validated for submission_id=$submission_id", 3, WP_CONTENT_DIR . '/debug.log');
-            wp_die('Thank you! Your email has been successfully validated.', 'Email Validated', array('response' => 200));
-        } else {
-            error_log("ERROR: Invalid token or submission already validated for submission_id=$submission_id", 3, WP_CONTENT_DIR . '/debug.log');
-            wp_die('Invalid validation link or already validated.', 'Validation Failed', array('response' => 400));
-        }
+// ============================================
+// 7. GET USER PROFILE (AJAX)
+// ============================================
+add_action('wp_ajax_get_user_profile', function() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not authorized');
+        return;
     }
-}
-add_action('init', 'handle_referral_validation');
-
-/**
- * Add admin dashboard widget for referral notifications
- */
-function add_referral_notifications_dashboard_widget() {
-    wp_add_dashboard_widget(
-        'referral_notifications_widget',
-        'Recent Patient Referrals',
-        'display_referral_notifications_widget'
-    );
-}
-add_action('wp_dashboard_setup', 'add_referral_notifications_dashboard_widget');
-
-/**
- * Display referral notifications in dashboard widget
- */
-function display_referral_notifications_widget() {
+    
+    $user_id = get_current_user_id();
+    $user = get_userdata($user_id);
+    
     global $wpdb;
-    $table_name = $wpdb->prefix . 'admin_notifications';
+    $portal_user = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d",
+        $user_id
+    ), ARRAY_A);
     
-    // Check if table exists
-    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$table_name}'");
-    if (!$table_exists) {
-        echo '<p>No referrals found.</p>';
+    wp_send_json_success([
+        'personal' => [
+            'first_name' => $portal_user['first_name'] ?? get_user_meta($user_id, 'first_name', true),
+            'last_name'  => $portal_user['last_name'] ?? get_user_meta($user_id, 'last_name', true),
+            'email'      => $user->user_email,
+            'phone'      => $portal_user['phone'] ?? ''
+        ],
+        'professional' => [
+            'practice'       => $portal_user['practice'] ?? '',
+            'specialty'      => $portal_user['specialty'] ?? '',
+            'license_number' => $portal_user['license_number'] ?? '',
+            'address'        => $portal_user['address'] ?? '',
+            'city'           => $portal_user['city'] ?? '',
+            'state'          => $portal_user['state'] ?? '',
+            'zip'            => $portal_user['zip'] ?? ''
+        ]
+    ]);
+});
+
+// ============================================
+// 8. UPDATE USER PROFILE (AJAX)
+// ============================================
+add_action('wp_ajax_update_user_profile', function() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not authorized');
         return;
     }
     
-    // Get recent notifications
-    $notifications = $wpdb->get_results("
-        SELECT * FROM {$table_name}
-        ORDER BY created_at DESC
-        LIMIT 5
-    ");
+    $user_id = get_current_user_id();
     
-    if (empty($notifications)) {
-        echo '<p>No recent referrals found.</p>';
+    $data = [
+        'first_name'     => sanitize_text_field($_POST['first_name'] ?? ''),
+        'last_name'      => sanitize_text_field($_POST['last_name'] ?? ''),
+        'phone'          => sanitize_text_field($_POST['phone'] ?? ''),
+        'practice'       => sanitize_text_field($_POST['practice'] ?? ''),
+        'specialty'      => sanitize_text_field($_POST['specialty'] ?? ''),
+        'license_number' => sanitize_text_field($_POST['license_number'] ?? ''),
+        'address'        => sanitize_text_field($_POST['address'] ?? ''),
+        'city'           => sanitize_text_field($_POST['city'] ?? ''),
+        'state'          => sanitize_text_field($_POST['state'] ?? ''),
+        'zip'            => sanitize_text_field($_POST['zip'] ?? ''),
+        'updated_at'     => current_time('mysql')
+    ];
+
+    error_log('[Portal] ' . print_r($data, true));
+    
+    global $wpdb;
+    $wpdb->update($wpdb->prefix . 'portal_users', $data, ['wp_user_id' => $user_id]);
+    
+    // Also update WP user meta
+    update_user_meta($user_id, 'first_name', $data['first_name']);
+    update_user_meta($user_id, 'last_name', $data['last_name']);
+    
+    wp_send_json_success(['message' => 'Profile updated successfully']);
+});
+
+// ============================================
+// 9. GET RESOURCES (AJAX)
+// ============================================
+add_action('wp_ajax_get_resources', function() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not authorized');
         return;
     }
     
-    echo '<ul class="referral-notifications">';
-    foreach ($notifications as $notification) {
-        $is_read_class = $notification->is_read ? 'read' : 'unread';
-        echo '<li class="' . $is_read_class . '">';
-        echo '<strong>' . esc_html($notification->provider_name) . '</strong> ';
-        echo 'referred a patient for ' . esc_html($notification->reason);
-        echo '<br><small>' . esc_html(human_time_diff(strtotime($notification->created_at), current_time('timestamp'))) . ' ago</small>';
-        echo '</li>';
+    global $wpdb;
+    $resources = $wpdb->get_results(
+        "SELECT id, title, description, file_path, access_level, created_at 
+         FROM {$wpdb->prefix}portal_resources 
+         ORDER BY title",
+        ARRAY_A
+    );
+    
+    // Add category/type based on title or access_level
+    foreach ($resources as &$r) {
+        $r['category'] = $r['access_level'] ?: 'General';
+        $r['type'] = strpos($r['file_path'] ?? '', '.pdf') !== false ? 'PDF' : 'Document';
+        $r['url'] = $r['file_path'] ?: '#';
     }
-    echo '</ul>';
     
-    echo '<p><a href="' . admin_url('admin.php?page=referral-notifications') . '">View all referrals</a></p>';
+    wp_send_json_success($resources);
+});
+
+// ============================================
+// 10. GET REFERRALS (AJAX)
+// ============================================
+add_action('wp_ajax_get_referrals', function() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not authorized');
+        return;
+    }
     
-    // Add some basic styling
-    echo '<style>
-        .referral-notifications { margin-left: 0; padding-left: 0; }
-        .referral-notifications li { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
-        .referral-notifications li.unread { font-weight: bold; background-color: #f7fcfe; padding: 5px; }
-        .referral-notifications li small { color: #777; }
-    </style>';
+    global $wpdb;
+    $user_id = get_current_user_id();
+    
+    // Get portal_user id
+    $portal_user = $wpdb->get_row($wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d",
+        $user_id
+    ));
+    
+    $referrals = $wpdb->get_results($wpdb->prepare(
+        "SELECT submission_id, provider_name, provider_practice, provider_email, 
+                reason, notes, created_at, is_validated
+         FROM {$wpdb->prefix}referral_submissions 
+         WHERE user_id = %d OR user_id IS NULL
+         ORDER BY created_at DESC 
+         LIMIT 50",
+        $portal_user->id ?? 0
+    ), ARRAY_A);
+    
+    // Decrypt patient_name for display (simplified - shows as "Patient")
+    foreach ($referrals as &$ref) {
+        $ref['patient_name'] = 'Patient #' . $ref['submission_id'];
+    }
+    
+    wp_send_json_success($referrals);
+});
+
+// ============================================
+// 11. SUBMIT REFERRAL (AJAX)
+// ============================================
+add_action('wp_ajax_submit_referral', function() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not authorized');
+        return;
+    }
+    
+    global $wpdb;
+    $user_id = get_current_user_id();
+    
+    // Get portal user id
+    $portal_user = $wpdb->get_row($wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d",
+        $user_id
+    ));
+    
+    $result = $wpdb->insert($wpdb->prefix . 'referral_submissions', [
+        'provider_name'     => sanitize_text_field($_POST['provider_name'] ?? ''),
+        'provider_practice' => sanitize_text_field($_POST['provider_practice'] ?? ''),
+        'provider_email'    => sanitize_email($_POST['provider_email'] ?? ''),
+        'provider_phone'    => sanitize_text_field($_POST['provider_phone'] ?? ''),
+        'patient_name'      => sanitize_text_field($_POST['patient_name'] ?? ''),
+        'patient_email'     => sanitize_email($_POST['patient_email'] ?? ''),
+        'reason'            => sanitize_text_field($_POST['reason'] ?? ''),
+        'notes'             => sanitize_textarea_field($_POST['notes'] ?? ''),
+        'user_id'           => $portal_user->id ?? null,
+        'created_at'        => current_time('mysql'),
+        'validation_token'  => wp_generate_uuid4(),
+        'is_validated'      => 0
+    ]);
+    
+    if ($result) {
+        wp_send_json_success(['message' => 'Referral submitted successfully']);
+    } else {
+        wp_send_json_error('Failed to submit referral');
+    }
+});
+
+// ============================================
+// 12. CONTACT FORM (AJAX)
+// ============================================
+add_action('wp_ajax_submit_contact', 'handle_contact_form');
+add_action('wp_ajax_nopriv_submit_contact', 'handle_contact_form');
+
+function handle_contact_form() {
+    $name    = sanitize_text_field($_POST['name'] ?? '');
+    $email   = sanitize_email($_POST['email'] ?? '');
+    $subject = sanitize_text_field($_POST['subject'] ?? '');
+    $message = sanitize_textarea_field($_POST['message'] ?? '');
+    
+    if (empty($name) || empty($email) || empty($message)) {
+        wp_send_json_error('Please fill in all required fields');
+        return;
+    }
+    
+    $to = get_option('admin_email');
+    $email_subject = "[Portal] $subject";
+    $body = "From: $name <$email>\n\n$message";
+    
+    if (wp_mail($to, $email_subject, $body, ["Reply-To: $email"])) {
+        wp_send_json_success(['message' => 'Message sent successfully']);
+    } else {
+        wp_send_json_error('Failed to send message');
+    }
 }
 
-/**
- * Debug email processing to identify duplicate sources
- */
-function debug_email_processing($message, $context = 'unknown') {
-    $validation_count = substr_count($message, 'Validate Email Address');
-    $processed_count = substr_count($message, '<!-- VALIDATION_EMAIL_PROCESSED -->');
-    
-    // error_log("Email debug [$context]: Validation buttons: $validation_count, Processed markers: $processed_count", 3, WP_CONTENT_DIR . '/debug.log');
-    
-    return $message;
-}
-
-// Add debug to all email filters
-add_filter('wpforms_smart_tag_process_validation_url', function($content) {
-    return debug_email_processing($content, 'smart_tag');
-}, 999, 1);
-
-add_filter('wpforms_emails_notifications_message', function($message) {
-    return debug_email_processing($message, 'notifications');
-}, 999, 1);
-
-add_filter('wp_mail', function($args) {
-    if (isset($args['message'])) {
-        $args['message'] = debug_email_processing($args['message'], 'wp_mail');
+// ============================================
+// 13. DASHBOARD STATS (AJAX)
+// ============================================
+add_action('wp_ajax_get_dashboard_stats', function() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not authorized');
+        return;
     }
-    return $args;
-}, 999);
+    
+    global $wpdb;
+    $user_id = get_current_user_id();
+    
+    $portal_user = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d",
+        $user_id
+    ), ARRAY_A);
+    
+    $referral_count = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}referral_submissions WHERE user_id = %d",
+        $portal_user['id'] ?? 0
+    )) ?: 0;
+    
+    $resource_count = $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}portal_resources"
+    ) ?: 0;
+    
+    wp_send_json_success([
+        'user' => [
+            'firstName'   => $portal_user['first_name'] ?? '',
+            'lastName'    => $portal_user['last_name'] ?? '',
+            'practice'    => $portal_user['practice'] ?? '',
+            'lastLogin'   => $portal_user['last_login'] ?? null,
+            'memberSince' => $portal_user['created_at'] ?? null
+        ],
+        'stats' => [
+            'referrals' => (int) $referral_count,
+            'resources' => (int) $resource_count
+        ]
+    ]);
+});
+
+// ============================================
+// 14. LOGOUT REDIRECT
+// ============================================
+add_filter('logout_redirect', function() {
+    return home_url('/portal-login/');
+}, 10, 3);
+
+// ============================================
+// 15. LOGIN REDIRECT
+// ============================================
+add_filter('login_redirect', function($redirect, $request, $user) {
+    if (is_a($user, 'WP_User')) {
+        return home_url('/dashboard/');
+    }
+    return $redirect;
+}, 10, 3);
+
+// ============================================
+// 16. HIDE ADMIN BAR FOR NON-ADMINS
+// ============================================
+add_action('after_setup_theme', function() {
+    if (!current_user_can('manage_options')) {
+        show_admin_bar(false);
+    }
+});
+
+// ============================================
+// 17. PARENT THEME STYLES (non-portal pages)
+// ============================================
+add_action('wp_enqueue_scripts', function() {
+    if (is_portal_page()) return;
+    
+    wp_enqueue_style('blocksy-parent', get_template_directory_uri() . '/style.css');
+    wp_enqueue_style('blocksy-child', get_stylesheet_directory_uri() . '/style.css', ['blocksy-parent']);
+});
