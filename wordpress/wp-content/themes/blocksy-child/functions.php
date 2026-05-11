@@ -390,7 +390,11 @@ if (!function_exists('handle_portal_login')) {
     add_action('wp_ajax_portal_login', 'handle_portal_login');
     function handle_portal_login() {
         $nonce = $_POST['nonce'] ?? '';
-        if (!wp_verify_nonce($nonce, 'portal_login_nonce') && !wp_verify_nonce($nonce, 'portal_nonce')) {
+        if (
+            !wp_verify_nonce($nonce, 'portal_login_form_nonce')
+            && !wp_verify_nonce($nonce, 'portal_login_nonce')
+            && !wp_verify_nonce($nonce, 'portal_nonce')
+        ) {
             wp_send_json_error('Security check failed');
             return;
         }

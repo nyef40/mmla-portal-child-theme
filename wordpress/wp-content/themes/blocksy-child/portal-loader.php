@@ -29,7 +29,9 @@ add_action('init', function() {
                     echo '<style id="portal-hide-duplicate-css">' . $hide_css . '</style>';
                 }, 4);
                 add_action('wp_footer', function() {
-                    $run = "var m=document.getElementById('portal-page-main');if(!m)return;"
+                    $run = "var all=document.querySelectorAll('#portal-page-main');if(!all||!all.length)return;"
+                        . "var m=all[all.length-1];"
+                        . "for(var k=0;k<all.length-1;k++){all[k].style.setProperty('display','none','important');}"
                         . "var hide=function(el){if(el&&el!==m&&!m.contains(el))el.style.setProperty('display','none','important');};"
                         . "var sel='#content,main,[data-block=content],.content-area,.site-main,.ct-container';"
                         . "document.querySelectorAll(sel).forEach(function(c){var ch=c.children;for(var i=0;i<ch.length;i++)if(!ch[i].contains(m))hide(ch[i]);});"
