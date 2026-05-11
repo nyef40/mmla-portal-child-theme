@@ -15,9 +15,9 @@ const Home = () => {
             ) : (
                 <div>
                     <p>Please log in or register to access the portal:</p>
-                    <a href="/portal/login">Login</a>
+                    <a href="/portal-login/">Login</a>
                     <span> | </span>
-                    <a href="/portal/register">Register</a>
+                    <a href="/register/">Register</a>
                 </div>
             )}
         </div>

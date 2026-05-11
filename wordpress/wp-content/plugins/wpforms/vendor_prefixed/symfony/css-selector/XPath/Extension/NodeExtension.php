@@ -142,7 +142,7 @@ class NodeExtension extends AbstractExtension
         $name = $node->getAttribute();
         $safe = $this->isSafeName($name);
         if ($this->hasFlag(self::ATTRIBUTE_NAME_IN_LOWER_CASE)) {
-            $name = \strtolower($name);
+            $name = \strtolower((string)($name ?? ''));
         }
         if ($node->getNamespace()) {
             $name = \sprintf('%s:%s', $node->getNamespace(), $name);
@@ -152,7 +152,7 @@ class NodeExtension extends AbstractExtension
         $value = $node->getValue();
         $xpath = $translator->nodeToXPath($node->getSelector());
         if ($this->hasFlag(self::ATTRIBUTE_VALUE_IN_LOWER_CASE)) {
-            $value = \strtolower($value);
+            $value = \strtolower((string)($value ?? ''));
         }
         return $translator->addAttributeMatching($xpath, $node->getOperator(), $attribute, $value);
     }
@@ -187,7 +187,7 @@ class NodeExtension extends AbstractExtension
     {
         $element = $node->getElement();
         if ($this->hasFlag(self::ELEMENT_NAME_IN_LOWER_CASE)) {
-            $element = \strtolower($element);
+            $element = \strtolower((string)($element ?? ''));
         }
         if ($element) {
             $safe = $this->isSafeName($element);

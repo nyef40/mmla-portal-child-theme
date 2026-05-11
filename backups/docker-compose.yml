@@ -3,9 +3,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    networks:
+      - default
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     ports:
       - "8080:80"
     environment:
+      TZ: America/Los_Angeles
       WORDPRESS_DB_HOST: db
       WORDPRESS_DB_USER: wordpress
       WORDPRESS_DB_PASSWORD: wordpress
@@ -14,11 +20,13 @@ services:
       PHP_IDE_CONFIG: "serverName=wordpress"
       XDEBUG_MODE: debug
       XDEBUG_CONFIG: client_host=host.docker.internal client_port=9005
+      PHP_INI_SCAN_DIR: /usr/local/etc/php/conf.d:/usr/local/etc/php/conf.d/wp-cli.ini
     volumes:
       - ./wordpress:/var/www/html
       - ./config/wp-config.php:/var/www/html/wp-config.php
       - ./config/php.ini:/usr/local/etc/php/conf.d/custom.ini
       - ./config/xdebug.ini:/usr/local/etc/php/conf.d/xdebug.ini
+      - ./wordpress/wp-cli.yml:/var/www/html/wp-cli.yml
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -30,6 +38,7 @@ services:
       MYSQL_USER: wordpress
       MYSQL_PASSWORD: wordpress
       MYSQL_ROOT_PASSWORD: root
+    command: mysqld --skip-ssl --require_secure_transport=OFF --default-authentication-plugin=mysql_native_password
     ports:
       - "3306:3306"
     volumes:
@@ -41,5 +50,20 @@ services:
     environment:
       PMA_HOST: db
       MYSQL_ROOT_PASSWORD: root
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - default
+
 volumes:
   db_data:
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16

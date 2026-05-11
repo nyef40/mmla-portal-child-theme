@@ -1,0 +1,15 @@
+# Run portal auth test against a given BASE_URL.
+# Usage:
+#   BASE_URL=https://mobilemedicalla.com docker compose run --rm test-auth
+#   BASE_URL=http://host.docker.internal:8080 PORTAL_USER=user PORTAL_PASS=pass docker compose run --rm test-auth
+services:
+  test-auth:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: npm run test:auth
+    environment:
+      - BASE_URL=${BASE_URL:-https://mobilemedicalla.com}
+      - PORTAL_USER=${PORTAL_USER:-mmla2024}
+      - PORTAL_PASS=${PORTAL_PASS}

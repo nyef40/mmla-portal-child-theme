@@ -6,6 +6,9 @@
 
 if (!defined('ABSPATH')) exit;
 
+// Suppress PHP deprecation notices in logs (third-party plugins/themes). Do not use E_STRICT (deprecated in PHP 8.4).
+error_reporting(E_ALL & ~E_DEPRECATED);
+
 // ============================================
 // CONFIGURATION (must be before any require that uses portal_debug)
 // ============================================
@@ -66,8 +69,33 @@ if (is_readable(get_stylesheet_directory() . '/functions-portal-auth-enhanced.ph
 }
 
 // ============================================
-// 0. NO-CACHE FOR LOGIN (fresh nonce)
+// 0a. REDIRECTS: /portal/ -> /dashboard/; old /portal/xxx/ -> correct slugs
 // ============================================
+add_action('template_redirect', function() {
+    // Single dashboard entry: /portal/ shows same as dashboard (avoids duplicate upper/lower)
+    if (is_page('portal')) {
+        wp_redirect(home_url('/dashboard/'), 302);
+        exit;
+    }
+    $uri = isset($_SERVER['REQUEST_URI']) ? strtok($_SERVER['REQUEST_URI'], '?') : '';
+    $redirects = [
+        '/portal/profile/' => '/portal-profile/',
+        '/portal/resources/' => '/portal-resources/',
+        '/portal/referrals/' => '/portal-referrals/',
+        '/portal/contact/' => '/contact/',
+    ];
+    foreach ($redirects as $from => $to) {
+        if ($uri === $from || $uri === rtrim($from, '/')) {
+            wp_redirect(home_url($to), 301);
+            exit;
+        }
+    }
+}, 0);
+
+// ============================================
+// 0. NO-CACHE FOR PORTAL PAGES (fresh nonce + ensure our template runs, not cached HTML)
+// ============================================
+// Only login and register: no-cache (fresh nonce). Other portal pages: allow cache to avoid session/cookie issues.
 add_action('template_redirect', function() {
     if (is_page('portal-login') || is_page('register')) {
         header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -84,8 +112,48 @@ add_action('wp_head', function() {
 }, 1);
 
 // ============================================
-// 1. PORTAL PAGE DETECTION
+// 1. PORTAL PAGE DETECTION & BODY CLASS (hide duplicate on profile/resources/contact)
 // ============================================
+// Force our page templates for portal-login, portal-profile, portal-resources, contact so #portal-page-main is always output (overrides Elementor/Default template)
+add_filter('template_include', function($template) {
+    $portal_templates = [
+        'portal-login'     => 'page-portal-login-enhanced.php',
+        'portal-profile'   => 'page-profile.php',
+        'portal-resources' => 'page-portal-resources.php',
+        'contact'          => 'page-contact.php',
+        'register'         => 'page-register-enhanced.php',
+    ];
+    $slug = null;
+    if (is_page(array_keys($portal_templates))) {
+        $slug = get_post_field('post_name', get_queried_object_id());
+    }
+    // Fallback: detect by request URI (in case main query was altered by cache/plugin)
+    if (empty($slug) && !empty($_SERVER['REQUEST_URI'])) {
+        $uri = strtok($_SERVER['REQUEST_URI'], '?');
+        $uri = trim($uri, '/');
+        foreach (array_keys($portal_templates) as $s) {
+            if ($uri === $s || $uri === $s . '/' || strpos($uri, $s . '/') === 0) {
+                $slug = $s;
+                break;
+            }
+        }
+    }
+    if (!empty($slug) && !empty($portal_templates[$slug])) {
+        $our = get_stylesheet_directory() . '/' . $portal_templates[$slug];
+        if (is_readable($our)) {
+            return $our;
+        }
+    }
+    return $template;
+}, 999);
+
+add_filter('body_class', function($classes) {
+    if (is_page(['portal-login', 'register', 'portal-profile', 'portal-resources', 'contact'])) {
+        $classes[] = 'portal-single-view';
+    }
+    return $classes;
+}, 999);
+
 function is_portal_page() {
     global $post;
     if (is_admin() || !$post) return false;
@@ -377,59 +445,73 @@ function portal_login_fresh_nonce() {
     wp_send_json_success(['nonce' => wp_create_nonce('portal_login_form_nonce')]);
 }
 
+// Fresh nonce for register form (avoids stale nonce when page is cached)
+add_action('wp_ajax_nopriv_portal_register_fresh_nonce', 'portal_register_fresh_nonce');
+add_action('wp_ajax_portal_register_fresh_nonce', 'portal_register_fresh_nonce');
+function portal_register_fresh_nonce() {
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    wp_send_json_success(['nonce' => wp_create_nonce('portal_register_nonce')]);
+}
+
 // ============================================
-// 6. REGISTER HANDLER (AJAX) – only if auth-enhanced not loaded
+// 6. REGISTER – shared logic and handlers
 // ============================================
-if (!function_exists('handle_portal_register')) {
-    add_action('wp_ajax_nopriv_portal_register', 'handle_portal_register');
-    function handle_portal_register() {
-        $nonce = $_POST['nonce'] ?? '';
-        if (!wp_verify_nonce($nonce, 'portal_register_nonce') && !wp_verify_nonce($nonce, 'portal_nonce')) {
-            wp_send_json_error('Security check failed');
-            return;
+
+/**
+ * Process registration from POST data. Used by AJAX and by full-page POST fallback.
+ * @param array $post e.g. $_POST
+ * @return array ['ok' => true] or ['ok' => false, 'message' => string]
+ */
+function portal_process_registration($post) {
+    $nonce = $post['nonce'] ?? '';
+    $page_token = $post['portal_register_token'] ?? '';
+    $nonce_ok = wp_verify_nonce($nonce, 'portal_register_nonce') || wp_verify_nonce($nonce, 'portal_nonce');
+    // Fallback: one-time page token (when nonce fails e.g. cache/session on live)
+    if (!$nonce_ok && $page_token !== '') {
+        $token_key = 'portal_reg_' . hash('sha256', $page_token);
+        if (get_transient($token_key) === '1') {
+            delete_transient($token_key);
+            $nonce_ok = true;
         }
-    
-    $username   = sanitize_user($_POST['username'] ?? '');
-    $email      = sanitize_email($_POST['email'] ?? '');
-    $password   = $_POST['password'] ?? '';
-    $first_name = sanitize_text_field($_POST['first_name'] ?? '');
-    $last_name  = sanitize_text_field($_POST['last_name'] ?? '');
-    $practice   = sanitize_text_field($_POST['practice'] ?? '');
-    
+    }
+    if (!$nonce_ok) {
+        return ['ok' => false, 'message' => 'Security check failed'];
+    }
+    $username   = sanitize_user($post['username'] ?? '');
+    $email      = sanitize_email($post['email'] ?? '');
+    $password   = $post['password'] ?? '';
+    $first_name = sanitize_text_field($post['first_name'] ?? '');
+    $last_name  = sanitize_text_field($post['last_name'] ?? '');
+    $practice   = sanitize_text_field($post['practice'] ?? $post['practice_name'] ?? '');
+    $phone      = sanitize_text_field($post['phone'] ?? '');
+    $role       = sanitize_text_field($post['role'] ?? '');
+    $specialty  = sanitize_text_field($post['specialty'] ?? '');
+    $license_number = sanitize_text_field($post['license_number'] ?? '');
+    $address    = sanitize_text_field($post['address'] ?? '');
+    $city       = sanitize_text_field($post['city'] ?? '');
+    $state      = sanitize_text_field($post['state'] ?? '');
+    $zip        = sanitize_text_field($post['zip'] ?? '');
     if (empty($username) || empty($email) || empty($password)) {
-        wp_send_json_error('Please fill in all required fields');
-        return;
+        return ['ok' => false, 'message' => 'Please fill in all required fields'];
     }
-    
     if (username_exists($username)) {
-        wp_send_json_error('Username already exists');
-        return;
+        return ['ok' => false, 'message' => 'Username already exists'];
     }
-    
     if (email_exists($email)) {
-        wp_send_json_error('Email already registered');
-        return;
+        return ['ok' => false, 'message' => 'Email already registered'];
     }
-    
-    // Create WordPress user
     $user_id = wp_create_user($username, $password, $email);
-    
     if (is_wp_error($user_id)) {
-        wp_send_json_error($user_id->get_error_message());
-        return;
+        return ['ok' => false, 'message' => $user_id->get_error_message()];
     }
-    
-    // Update user meta
     update_user_meta($user_id, 'first_name', $first_name);
     update_user_meta($user_id, 'last_name', $last_name);
-    wp_update_user(['ID' => $user_id, 'display_name' => "$first_name $last_name"]);
-    
-    // Generate verification token BEFORE insert
+    wp_update_user(['ID' => $user_id, 'display_name' => $first_name . ' ' . $last_name]);
     $token = wp_generate_password(32, false, false);
     $token_hash = hash('sha256', $token);
     $expiry = date('Y-m-d H:i:s', strtotime('+24 hours'));
-    
-    // Insert into portal_users WITH the token
     global $wpdb;
     $inserted = $wpdb->insert($wpdb->prefix . 'portal_users', [
         'wp_user_id'       => $user_id,
@@ -437,24 +519,57 @@ if (!function_exists('handle_portal_register')) {
         'email'            => $email,
         'first_name'       => $first_name,
         'last_name'        => $last_name,
-        'practice'         => $practice,
+        'phone'            => $phone ?: null,
+        'practice'         => $practice ?: null,
+        'address'          => $address ?: null,
+        'city'             => $city ?: null,
+        'state'            => $state ?: null,
+        'zip'              => $zip ?: null,
         'email_verified'   => 0,
+        'specialty'        => $specialty ?: null,
+        'license_number'   => $license_number ?: null,
+        'role'             => $role ?: null,
         'validation_token' => $token_hash,
         'token_expiry'     => $expiry,
         'created_at'       => current_time('mysql')
     ]);
-    
     if (!$inserted) {
-        error_log("[Portal] Failed to insert portal_users record for user $user_id");
+        error_log("[Portal] Failed to insert portal_users record for user $user_id: " . $wpdb->last_error);
+        return ['ok' => false, 'message' => 'Account could not be saved. Please try again or contact support.'];
     }
-    
-    // Now send verification email (token is already in DB)
     send_verification_email_direct($user_id, $email, $first_name, $token);
-    
-    wp_send_json_success([
-        'message'  => 'Registration successful! Please check your email to verify your account.',
-        'redirect' => home_url('/portal-login/?registered=1')
-    ]);
+    return ['ok' => true];
+}
+
+// Fallback: full-page POST to /register/ (when JS fails or form doesn’t use AJAX)
+add_action('template_redirect', function() {
+    if (!is_page('register') || $_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_POST['action']) || $_POST['action'] !== 'portal_register') {
+        return;
+    }
+    $result = portal_process_registration($_POST);
+    if ($result['ok']) {
+        wp_redirect(home_url('/portal-login/?registered=1'), 302);
+        exit;
+    }
+    set_transient('portal_register_error', $result['message'], 60);
+    wp_redirect(home_url('/register/?error=1'), 302);
+    exit;
+}, 5);
+
+// Single registration handler for both local and live: insert portal_users, send verification email, link sets email_verified=1.
+if (!function_exists('handle_portal_register')) {
+    add_action('wp_ajax_nopriv_portal_register', 'handle_portal_register', 1);
+    add_action('wp_ajax_portal_register', 'handle_portal_register', 1);
+    function handle_portal_register() {
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        $result = portal_process_registration($_POST);
+        if ($result['ok']) {
+            wp_send_json_success([
+                'message'  => 'Registration successful! Please check your email to verify your account.',
+                'redirect' => home_url('/portal-login/?registered=1')
+            ]);
+        }
+        wp_send_json_error($result['message']);
     }
 }
 
@@ -729,7 +844,7 @@ function handle_portal_email_verification() {
     $user_id = absint($_GET['uid'] ?? 0);
     
     if (empty($token) || empty($user_id)) {
-        wp_redirect(home_url('/portal/login/?error=invalid_link'));
+        wp_redirect(home_url('/portal-login/?error=invalid_link'));
         exit;
     }
     
@@ -745,25 +860,23 @@ function handle_portal_email_verification() {
         $user_id,
         $token_hash
     ));
-    error_log(message: "[Portal] Stored token for user $user_id: " . ($debug ? $debug->validation_token : 'NULL'));
     
     if (!$portal_user) {
         error_log("[Portal] Invalid verification token for user $user_id");
-        wp_redirect(home_url('/portal/login/?error=invalid_token'));
+        wp_redirect(home_url('/portal-login/?error=invalid_token'));
         exit;
     }
     
     // Check if token expired
     if (!empty($portal_user->token_expiry) && strtotime($portal_user->token_expiry) < time()) {
         error_log("[Portal] Verification token expired for user $user_id");
-        wp_redirect(home_url('/portal/login/?error=token_expired'));
+        wp_redirect(home_url('/portal-login/?error=token_expired'));
         exit;
     }
 
-    
     // Check if already verified
     if ($portal_user->email_verified == 1) {
-        wp_redirect(home_url('/portal/login/?message=already_verified'));
+        wp_redirect(home_url('/portal-login/?message=already_verified'));
         exit;
     }
     
@@ -781,10 +894,10 @@ function handle_portal_email_verification() {
     
     if ($updated !== false) {
         error_log("[Portal] Email verified successfully for user $user_id");
-        wp_redirect(home_url('/portal/login/?verified=1'));
+        wp_redirect(home_url('/portal-login/?verified=1'));
     } else {
         error_log("[Portal] Failed to update email_verified for user $user_id");
-        wp_redirect(home_url('/portal/login/?error=verification_failed'));
+        wp_redirect(home_url('/portal-login/?error=verification_failed'));
     }
     exit;
 }

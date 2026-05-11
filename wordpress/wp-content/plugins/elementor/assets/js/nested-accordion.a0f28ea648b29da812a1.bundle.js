@@ -1,4 +1,4 @@
-/*! elementor - v3.29.0 - 19-05-2025 */
+/*! elementor - v3.31.0 - 27-08-2025 */
 "use strict";
 (self["webpackChunkelementorFrontend"] = self["webpackChunkelementorFrontend"] || []).push([["nested-accordion"],{
 

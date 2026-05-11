@@ -1,50 +1,68 @@
-import React, { useState } from 'react';
+"use client";
+import { useState } from 'react';
+import { login } from '../utils/auth';
 
-const Login = () => {
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
-    const [message, setMessage] = useState(window.location.search.includes('verified=1') ? 'Email verified! Please log in.' : '');
-   
-        const handleSubmit = async (e) => {
+function Login() {
+    const [formData, setFormData] = useState({ username: '', password: '' });
+    const [message, setMessage] = useState(null);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData({ ...formData, [name]: value });
+    };
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        const response = await fetch('https://mobilemedicalla.com/wp-json/mmla/v1/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
-        });
-        const data = await response.json();
-        if (response.ok) {
-            setMessage('Login successful! Redirecting...');
-            setTimeout(() => window.location.href = '/portal/dashboard', 2000);
-        } else {
-            setMessage(data.message);
+        const result = await login(formData.username, formData.password);
+        if (!result.success) {
+            setMessage({ type: 'error', text: result.message });
         }
     };
 
     return (
-        <div className="portal-login">
-            <h2>Login</h2>
-            <form onSubmit={handleSubmit}>
-                <label>Username</label>
-                <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Username"
-                    required
-                />
-                <label>Password</label>
-                <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Password"
-                    required
-                />
-                <button type="submit">Login</button>
-            </form>
-            {message && <p>{message}</p>}
+        <div className="portal-container">
+            <div className="portal-auth-form">
+                <h1>Sign In to Portal</h1>
+                <p className="form-subtitle">Access the Mobile Medical LA Portal</p>
+                {message && (
+                    <div className={message.type === 'error' ? 'error-message' : 'success-message'}>
+                        <p>{message.text}</p>
+                    </div>
+                )}
+                <form onSubmit={handleSubmit} className="portal-login-form">
+                    <input type="hidden" name="nonce" value={window.portalSettings.nonce} />
+                    <div className="form-group">
+                        <label htmlFor="username">Username</label>
+                        <input
+                            type="text"
+                            id="username"
+                            name="username"
+                            value={formData.username}
+                            onChange={handleChange}
+                            required
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="password">Password</label>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            value={formData.password}
+                            onChange={handleChange}
+                            required
+                        />
+                    </div>
+                    <div className="form-actions">
+                        <button type="submit" className="button button-primary">Sign In</button>
+                    </div>
+                </form>
+                <p className="auth-links">
+                    Need an account? <a href="/register/">Register</a>
+                </p>
+            </div>
         </div>
     );
-};
+}
+
 export default Login;

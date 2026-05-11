@@ -1,0 +1,32 @@
+# macOS junk
+.DS_Store
+*.DS_Store
+
+# Editor/IDE files
+.vscode/
+*.swp
+*.swo
+
+# Logs and caches
+*.log
+error_log
+
+# Node/npm (if you ever use build tools)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build artifacts
+dist/
+build/
+
+# Sensitive (never track)
+wp-config.php
+
+# Temporary test folders/files (customize if you want to keep 'test/')
+test/
+*.bak
+*.tmp
+
+# General
+Thumbs.db

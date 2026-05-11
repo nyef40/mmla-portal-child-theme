@@ -1,0 +1,31 @@
+{
+  "git.ignoreLimitWarning": true,
+    "intelephense.stubs": [
+    "wordpress"
+  ],
+  // Optional but recommended for even more complete
+  "intelephense.files.associations": ["*.php", "*.module", "*.inc", "*.install", "*.theme"],
+  "intelephense.environment.includePaths": [
+    "./wp-includes",
+    "./wp-admin"
+  ],
+  
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact"
+  ],
+  "prettier.configPath": ".prettierrc",
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "debug.javascript.terminalOptions": {
+    "skipFiles": ["<node_internals>/**"]
+  }
+}

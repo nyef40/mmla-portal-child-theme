@@ -1,0 +1,21 @@
+<?php
+add_filter('query', function($query) {
+    global $wpdb;
+    if (stripos($query, 'CATALOGS') !== false && stripos($query, 'information_schema') !== false) {
+        error_log('Suppressing CATALOGS query: ' . $query);
+        return 'SELECT 1';
+    }
+    if (stripos($query, 'SHOW FULL COLUMNS FROM') !== false) {
+        error_log('Suppressing SHOW FULL COLUMNS query: ' . $query);
+        return $query; // Return original query string
+    }
+    if (stripos($query, 'SHOW TABLES LIKE') !== false) {
+        error_log('Suppressing SHOW TABLES LIKE query: ' . $query);
+        $table = preg_match("/'([^']+)'/", $query, $matches) ? str_replace('\\_', '_', $matches[1]) : '';
+        if ($table && $wpdb->get_var("SHOW TABLES LIKE '$table'")) {
+            return $query; // Return original query string
+        }
+        return 'SELECT 0'; // Return a dummy query to indicate table does not exist
+    }
+    return $query;
+}, 9999);

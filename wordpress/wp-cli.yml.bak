@@ -1,0 +1,8 @@
+@all:
+  db:
+    host: db
+    user: wordpress
+    password: wordpress
+    name: wordpress
+    ssl: false
+    client_flags: 0

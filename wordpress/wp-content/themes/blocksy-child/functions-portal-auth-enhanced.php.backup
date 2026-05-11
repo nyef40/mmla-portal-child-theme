@@ -1,0 +1,605 @@
+<?php
+/**
+ * Enhanced Portal Authentication Functions
+ * Handles login, registration, and user management for the portal system
+ */
+
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// Prevent multiple inclusions
+if (defined('PORTAL_AUTH_ENHANCED_LOADED')) {
+    return;
+}
+define('PORTAL_AUTH_ENHANCED_LOADED', true);
+
+portal_debug("REGISTRATION ATTEMPT", [
+    'post_data' => $_POST,
+    'files' => $_FILES,
+    'user_logged_in' => is_user_logged_in(),
+    'ajax' => wp_doing_ajax()
+]);
+
+/**
+ * Handle AJAX login requests
+ */
+function handle_portal_login() {
+
+    portal_debug("LOGIN HANDLER - Started", $_POST);
+
+    error_log("handle_portal_login called with nonce: {$_POST['nonce']}, username: {$_POST['username']}");
+
+    $token = wp_get_session_token();
+    error_log("handle_portal_login called with nonce: {$_POST['nonce']}, username: {$_POST['username']}, session_token: $token");
+    if (!isset($_POST['nonce']) || !isset($_POST['username']) || !isset($_POST['password'])) {
+        wp_send_json_error('Missing required data');
+        return;
+    }
+    if (!wp_verify_nonce($_POST['nonce'], 'portal_login_nonce')) {
+        wp_send_json_error('Security check failed');
+        return;
+    }
+    
+    // Check if required data is present
+    if (!isset($_POST['nonce']) || !isset($_POST['username']) || !isset($_POST['password'])) {
+        wp_send_json_error('Missing required data');
+        return;
+    }
+
+    // Verify nonce - use the same nonce name as in the form
+    if (!wp_verify_nonce($_POST['nonce'], 'portal_login_nonce')) {
+        wp_send_json_error('Security check failed');
+        return;
+    }
+
+    $username = sanitize_text_field($_POST['username']);
+    $password = $_POST['password'];
+    $remember = isset($_POST['remember']) ? true : false;
+
+    if (empty($username) || empty($password)) {
+        wp_send_json_error('Please enter both username and password');
+        return;
+    }
+
+    // Try to authenticate
+    $user = wp_authenticate($username, $password);
+
+    if (is_wp_error($user)) {
+        wp_send_json_error('Invalid username or password');
+        return;
+    }
+
+    // Log the user in
+    wp_clear_auth_cookie();
+    wp_set_current_user($user->ID);
+    wp_set_auth_cookie($user->ID, $remember, is_ssl());
+
+    // Update last login in user_meta table
+    update_user_meta($user->ID, 'last_login', current_time('mysql'));
+    
+    // Update last login in portal_users table
+    global $wpdb;
+    $portal_user_table = $wpdb->prefix . "portal_users";
+
+    portal_debug("LOGIN HANDLER - Updating last_login", [
+        'table' => $portal_user_table,
+        'user_id' => $user->ID
+    ]);
+
+    $update_result = $wpdb->update(
+        $portal_user_table,
+        array("last_login" => current_time("mysql")),
+        array("wp_user_id" => $user->ID),
+        array("%s"),
+        array("%d")
+    );
+
+    portal_debug("LOGIN HANDLER - Last login update result", [
+        'rows_affected' => $update_result,
+        'error' => $wpdb->last_error
+    ]);
+
+    wp_send_json_success([
+        'message' => 'Login successful! Redirecting...',
+        'redirect' => home_url('/dashboard/'),
+        'user_id' => $user->ID,
+        'user_name' => $user->display_name
+    ]);
+}
+
+add_action('wp_ajax_nopriv_portal_login', 'handle_portal_login');
+add_action('wp_ajax_portal_login', 'handle_portal_login');
+
+add_action('wp_verify_nonce_failed', function($nonce, $action, $user, $token) {
+    error_log("Nonce verification failed: nonce=$nonce, action=$action, user_id={$user->ID}, token=$token");
+}, 10, 4);
+
+/**
+ * Handle AJAX registration requests
+ */
+function handle_portal_registration() {
+    // Check if required data is present
+    if (!isset($_POST['nonce'])) {
+        wp_send_json_error('Missing security token');
+        return;
+    }
+
+    // Verify nonce
+    if (!wp_verify_nonce($_POST['nonce'], 'portal_register_nonce')) {
+        wp_send_json_error('Security check failed');
+        return;
+    }
+
+    $first_name = sanitize_text_field($_POST['first_name'] ?? '');
+    $last_name = sanitize_text_field($_POST['last_name'] ?? '');
+    $email = sanitize_email($_POST['email'] ?? '');
+    $phone = sanitize_text_field($_POST['phone'] ?? '');
+    $practice_name = sanitize_text_field($_POST['practice_name'] ?? '');
+    $specialty = sanitize_text_field($_POST['specialty'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    // Validate required fields
+    if (empty($first_name) || empty($last_name) || empty($email) || empty($password)) {
+        wp_send_json_error('Please fill in all required fields');
+        return;
+    }
+
+    // Check if email already exists
+    if (email_exists($email)) {
+        wp_send_json_error('An account with this email already exists');
+        return;
+    }
+
+    // Create username from email
+    $username = sanitize_user(current(explode('@', $email)));
+    $original_username = $username;
+    $counter = 1;
+
+    // Make sure username is unique
+    while (username_exists($username)) {
+        $username = $original_username . $counter;
+        $counter++;
+    }
+
+    // Create the user
+    $user_id = wp_create_user($username, $password, $email);
+
+    if (is_wp_error($user_id)) {
+        wp_send_json_error('Failed to create account: ' . $user_id->get_error_message());
+        return;
+    }
+
+    // Update user meta
+    update_user_meta($user_id, 'first_name', $first_name);
+    update_user_meta($user_id, 'last_name', $last_name);
+    update_user_meta($user_id, 'phone', $phone);
+    update_user_meta($user_id, 'practice_name', $practice_name);
+    update_user_meta($user_id, 'specialty', $specialty);
+    update_user_meta($user_id, 'portal_access', 1);
+    update_user_meta($user_id, 'portal_verified', 1); // Auto-verify for now
+    update_user_meta($user_id, 'registration_date', current_time('mysql'));
+
+    // Set display name
+    wp_update_user([
+        'ID' => $user_id,
+        'display_name' => $first_name . ' ' . $last_name
+    ]);
+
+    wp_send_json_success([
+        'message' => 'Account created successfully! You can now log in.',
+        'redirect' => home_url('/portal-login/')
+    ]);
+}
+add_action('wp_ajax_nopriv_portal_register', 'handle_portal_registration');
+add_action('wp_ajax_portal_register', 'handle_portal_registration');
+
+/**
+ * Handle contact form submissions
+ */
+function handle_contact_form_submission() {
+    // Verify nonce
+    if (!wp_verify_nonce($_POST['nonce'], 'contact_form_nonce')) {
+        wp_send_json_error('Security check failed');
+        return;
+    }
+
+    $first_name = sanitize_text_field($_POST['first_name'] ?? '');
+    $last_name = sanitize_text_field($_POST['last_name'] ?? '');
+    $email = sanitize_email($_POST['email'] ?? '');
+    $phone = sanitize_text_field($_POST['phone'] ?? '');
+    $subject = sanitize_text_field($_POST['subject'] ?? '');
+    $message = sanitize_textarea_field($_POST['message'] ?? '');
+
+    // Validate required fields
+    if (empty($first_name) || empty($last_name) || empty($email) || empty($subject) || empty($message)) {
+        wp_send_json_error('Please fill in all required fields');
+        return;
+    }
+
+    // Validate email
+    if (!is_email($email)) {
+        wp_send_json_error('Please enter a valid email address');
+        return;
+    }
+
+    // Store in database
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'contact_submissions';
+    
+    // Create table if it doesn't exist
+    $wpdb->query("CREATE TABLE IF NOT EXISTS {$table_name} (
+        id int(11) NOT NULL AUTO_INCREMENT,
+        first_name varchar(100) NOT NULL,
+        last_name varchar(100) NOT NULL,
+        email varchar(255) NOT NULL,
+        phone varchar(20),
+        subject varchar(255) NOT NULL,
+        message text NOT NULL,
+        submitted_at datetime DEFAULT CURRENT_TIMESTAMP,
+        status varchar(20) DEFAULT 'new',
+        PRIMARY KEY (id)
+    )");
+
+    $result = $wpdb->insert(
+        $table_name,
+        [
+            'first_name' => $first_name,
+            'last_name' => $last_name,
+            'email' => $email,
+            'phone' => $phone,
+            'subject' => $subject,
+            'message' => $message,
+            'submitted_at' => current_time('mysql')
+        ]
+    );
+
+    if ($result === false) {
+        wp_send_json_error('Failed to save your message. Please try again.');
+        return;
+    }
+
+    // Send email notification
+    $admin_email = get_option('admin_email');
+    $site_name = get_bloginfo('name');
+    
+    // Email to admin
+    $admin_subject = '[' . $site_name . '] New Contact Form Submission: ' . $subject;
+    $admin_message = "New contact form submission received:\n\n";
+    $admin_message .= "Name: {$first_name} {$last_name}\n";
+    $admin_message .= "Email: {$email}\n";
+    $admin_message .= "Phone: {$phone}\n";
+    $admin_message .= "Subject: {$subject}\n\n";
+    $admin_message .= "Message:\n{$message}\n\n";
+    $admin_message .= "Submitted: " . current_time('mysql') . "\n";
+    $admin_message .= "IP Address: " . $_SERVER['REMOTE_ADDR'] . "\n";
+
+    $headers = [
+        'From: ' . $site_name . ' <noreply@' . $_SERVER['HTTP_HOST'] . '>',
+        'Reply-To: ' . $first_name . ' ' . $last_name . ' <' . $email . '>',
+        'Content-Type: text/plain; charset=UTF-8'
+    ];
+
+    // Send to admin
+    wp_mail($admin_email, $admin_subject, $admin_message, $headers);
+
+    // Auto-reply to user
+    $user_subject = 'Thank you for contacting ' . $site_name;
+    $user_message = "Dear {$first_name},\n\n";
+    $user_message .= "Thank you for contacting us. We have received your message regarding: {$subject}\n\n";
+    $user_message .= "We will review your inquiry and get back to you within 24 hours.\n\n";
+    $user_message .= "For urgent matters, please call us at (123) 456-7890.\n\n";
+    $user_message .= "Best regards,\n";
+    $user_message .= "Mobile Medical LA Team\n\n";
+    $user_message .= "---\n";
+    $user_message .= "Your message:\n{$message}";
+
+    $user_headers = [
+        'From: ' . $site_name . ' <noreply@' . $_SERVER['HTTP_HOST'] . '>',
+        'Content-Type: text/plain; charset=UTF-8'
+    ];
+
+    wp_mail($email, $user_subject, $user_message, $user_headers);
+
+    wp_send_json_success([
+        'message' => 'Thank you for your message! We\'ll get back to you within 24 hours. A confirmation email has been sent to your email address.'
+    ]);
+}
+add_action('wp_ajax_submit_contact_form', 'handle_contact_form_submission');
+add_action('wp_ajax_nopriv_submit_contact_form', 'handle_contact_form_submission');
+
+/**
+ * Check if user has portal access
+ */
+function user_has_portal_access_enhanced($user_id = null) {
+    portal_debug("PORTAL ACCESS CHECK - Entry", ['user_id' => $user_id]);
+    
+    global $wpdb;
+    
+    if (!$user_id) {
+        $user_id = get_current_user_id();
+        portal_debug("PORTAL ACCESS CHECK - Got current user", ['user_id' => $user_id]);
+    }
+
+    if (!$user_id) {
+        portal_debug("PORTAL ACCESS CHECK - No user ID, returning false");
+        return false;
+    }
+
+    // Check if user exists in portal_users table and is verified
+    $portal_user_table = $wpdb->prefix . "portal_users";
+    portal_debug("PORTAL ACCESS CHECK - Querying table", ['table' => $portal_user_table]);
+    
+    $portal_user = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$portal_user_table} WHERE wp_user_id = %d AND email_verified = 1",
+        $user_id
+    ));
+
+    $result = !empty($portal_user);
+    portal_debug("PORTAL ACCESS CHECK - Result", [
+        'user_exists' => !empty($portal_user),
+        'user_data' => $portal_user,
+        'final_result' => $result
+    ]);
+
+    return $result;
+}
+
+/**
+ * Get dashboard data via AJAX
+ */
+function fetch_dashboard_data_callback() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not logged in');
+        return;
+    }
+
+    $user_id = get_current_user_id();
+    $user = get_userdata($user_id);
+
+    $dashboard_data = [
+        'user' => [
+            'id' => $user_id,
+            'name' => $user->first_name . ' ' . $user->last_name,
+            'email' => $user->user_email,
+            'last_login' => get_user_meta($user_id, 'last_login', true)
+        ],
+        'stats' => [
+            'pending_referrals' => 2, // Mock data
+            'resources_accessed' => 5,
+            'last_resource' => 'Understanding HIPAA Compliance'
+        ]
+    ];
+
+    wp_send_json_success($dashboard_data);
+}
+add_action('wp_ajax_fetch_dashboard_data', 'fetch_dashboard_data_callback');
+
+/**
+ * Get user profile data
+ */
+function get_user_profile_callback() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not logged in');
+        return;
+    }
+
+    $user_id = get_current_user_id();
+    $user = get_userdata($user_id);
+
+    $profile_data = [
+        'personal' => [
+            'first_name' => get_user_meta($user_id, 'first_name', true),
+            'last_name' => get_user_meta($user_id, 'last_name', true),
+            'email' => $user->user_email,
+            'phone' => get_user_meta($user_id, 'phone', true)
+        ],
+        'professional' => [
+            'practice_name' => get_user_meta($user_id, 'practice_name', true),
+            'specialty' => get_user_meta($user_id, 'specialty', true),
+            'license_number' => get_user_meta($user_id, 'license_number', true),
+            'address' => get_user_meta($user_id, 'address', true),
+            'city' => get_user_meta($user_id, 'city', true),
+            'state' => get_user_meta($user_id, 'state', true),
+            'zip' => get_user_meta($user_id, 'zip', true)
+        ]
+    ];
+
+    wp_send_json_success($profile_data);
+}
+add_action('wp_ajax_get_user_profile', 'get_user_profile_callback');
+
+/**
+ * Update user profile
+ */
+function update_user_profile_callback() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not logged in');
+        return;
+    }
+
+    $user_id = get_current_user_id();
+
+    // Update personal information
+    if (isset($_POST['first_name'])) {
+        update_user_meta($user_id, 'first_name', sanitize_text_field($_POST['first_name']));
+    }
+    if (isset($_POST['last_name'])) {
+        update_user_meta($user_id, 'last_name', sanitize_text_field($_POST['last_name']));
+    }
+    if (isset($_POST['phone'])) {
+        update_user_meta($user_id, 'phone', sanitize_text_field($_POST['phone']));
+    }
+
+    // Update professional information
+    if (isset($_POST['practice_name'])) {
+        update_user_meta($user_id, 'practice_name', sanitize_text_field($_POST['practice_name']));
+    }
+    if (isset($_POST['specialty'])) {
+        update_user_meta($user_id, 'specialty', sanitize_text_field($_POST['specialty']));
+    }
+    if (isset($_POST['license_number'])) {
+        update_user_meta($user_id, 'license_number', sanitize_text_field($_POST['license_number']));
+    }
+    if (isset($_POST['address'])) {
+        update_user_meta($user_id, 'address', sanitize_text_field($_POST['address']));
+    }
+    if (isset($_POST['city'])) {
+        update_user_meta($user_id, 'city', sanitize_text_field($_POST['city']));
+    }
+    if (isset($_POST['state'])) {
+        update_user_meta($user_id, 'state', sanitize_text_field($_POST['state']));
+    }
+    if (isset($_POST['zip'])) {
+        update_user_meta($user_id, 'zip', sanitize_text_field($_POST['zip']));
+    }
+
+    wp_send_json_success('Profile updated successfully');
+}
+add_action('wp_ajax_update_user_profile', 'update_user_profile_callback');
+
+/**
+ * Get referrals data
+ */
+function get_referrals_callback() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not logged in');
+        return;
+    }
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'referral_submissions';
+
+    $referrals = $wpdb->get_results("
+        SELECT submission_id, provider_name, provider_practice, provider_email, 
+               patient_name, reason, created_at, is_validated
+        FROM {$table_name} 
+        ORDER BY created_at DESC 
+        LIMIT 20
+    ");
+
+    wp_send_json_success($referrals);
+}
+add_action('wp_ajax_get_referrals', 'get_referrals_callback');
+
+/**
+ * Submit new referral
+ */
+function submit_referral_callback() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not logged in');
+        return;
+    }
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'referral_submissions';
+
+    $provider_name = sanitize_text_field($_POST['provider_name'] ?? '');
+    $provider_practice = sanitize_text_field($_POST['provider_practice'] ?? '');
+    $provider_email = sanitize_email($_POST['provider_email'] ?? '');
+    $provider_phone = sanitize_text_field($_POST['provider_phone'] ?? '');
+    $patient_name = sanitize_text_field($_POST['patient_name'] ?? '');
+    $patient_email = sanitize_email($_POST['patient_email'] ?? '');
+    $reason = sanitize_text_field($_POST['reason'] ?? '');
+    $notes = sanitize_textarea_field($_POST['notes'] ?? '');
+
+    $result = $wpdb->insert(
+        $table_name,
+        [
+            'provider_name' => $provider_name,
+            'provider_practice' => $provider_practice,
+            'provider_email' => $provider_email,
+            'provider_phone' => $provider_phone,
+            'patient_name' => $patient_name,
+            'patient_email' => $patient_email,
+            'reason' => $reason,
+            'notes' => $notes,
+            'created_at' => current_time('mysql'),
+            'is_validated' => 0
+        ]
+    );
+
+    if ($result === false) {
+        wp_send_json_error('Failed to submit referral');
+        return;
+    }
+
+    wp_send_json_success('Referral submitted successfully');
+}
+add_action('wp_ajax_submit_referral', 'submit_referral_callback');
+
+/**
+ * Get resources data
+ */
+function get_resources_callback() {
+    $resources = [
+        [
+            'id' => 1,
+            'title' => 'Understanding HIPAA Compliance',
+            'description' => 'Comprehensive guide to HIPAA compliance for healthcare providers',
+            'type' => 'PDF',
+            'url' => '/wp-content/uploads/hipaa-guide.pdf',
+            'category' => 'Compliance'
+        ],
+        [
+            'id' => 2,
+            'title' => 'Patient Care Guidelines',
+            'description' => 'Best practices for patient care in home health settings',
+            'type' => 'PDF',
+            'url' => '/wp-content/uploads/patient-care-guide.pdf',
+            'category' => 'Clinical'
+        ],
+        [
+            'id' => 3,
+            'title' => 'Emergency Procedures',
+            'description' => 'Step-by-step emergency response procedures',
+            'type' => 'PDF',
+            'url' => '/wp-content/uploads/emergency-procedures.pdf',
+            'category' => 'Safety'
+        ]
+    ];
+
+    wp_send_json_success($resources);
+}
+add_action('wp_ajax_get_resources', 'get_resources_callback');
+
+/**
+ * Log resource access
+ */
+function log_resource_access_callback() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not logged in');
+        return;
+    }
+
+    $resource_id = intval($_POST['resource_id'] ?? 0);
+    $user_id = get_current_user_id();
+
+    // Log the access (you could store this in a custom table)
+    update_user_meta($user_id, 'last_resource_access', current_time('mysql'));
+    update_user_meta($user_id, 'last_resource_id', $resource_id);
+
+    wp_send_json_success('Access logged');
+}
+add_action('wp_ajax_log_resource_access', 'log_resource_access_callback');
+
+/**
+ * Configure WordPress mail settings for better email delivery
+ */
+function configure_wp_mail() {
+    // Set content type to HTML for better formatting
+    add_filter('wp_mail_content_type', function() {
+        return 'text/html';
+    });
+    
+    // Set from name and email
+    add_filter('wp_mail_from_name', function() {
+        return get_bloginfo('name');
+    });
+    
+    add_filter('wp_mail_from', function() {
+        return 'noreply@' . $_SERVER['HTTP_HOST'];
+    });
+}
+add_action('init', 'configure_wp_mail');

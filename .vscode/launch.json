@@ -7,14 +7,62 @@
             "request": "launch",
             "port": 9005,
             "pathMappings": {
-                "/var/www/html": "${workspaceFolder}/wordpress"
+                "/var/www/html": "${workspaceFolder}/wordpress",
+                "/var/www/html/wp-content/themes/blocksy-child": "${workspaceFolder}/themes/blocksy-child",
+                "/var/www/html/wp-content/plugins": "${workspaceFolder}/plugins"
             },
             "log": true,
             "xdebugSettings": {
                 "max_children": 100,
-                "max_data": 512,
-                "max_depth": 5
-            }
+                "max_data": 1024,
+                "max_depth": 10
+            },
+            "ignore": [
+                "**/vendor/**",
+                "**/node_modules/**"
+            ]
+        },
+        {
+            "name": "Chrome: Portal Debug",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:8080/portal/",
+            "webRoot": "${workspaceFolder}/portal/src",
+            "sourceMapPathOverrides": {
+                "webpack:///src/*": "${webRoot}/*",
+                "webpack:///./src/*": "${webRoot}/*",
+                "webpack:///*": "*"
+            },
+            "skipFiles": [
+                "node_modules/**/*.js",
+                "<node_internals>/**/*.js"
+            ],
+            "sourceMaps": true
+        },
+        {
+            "name": "Attach to Chrome",
+            "type": "chrome",
+            "request": "attach",
+            "port": 9222,
+            "webRoot": "${workspaceFolder}/portal/src",
+            "sourceMaps": true
+        }
+        {
+            "name": "Debug Node",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/wordpress/wp-content/themes/blocksy-child/portal/src/node_modules/.bin/webpack",
+            "args": ["--mode", "development"],
+            "cwd": "${workspaceFolder}/wordpress/wp-content/themes/blocksy-child/portal/src",
+            "console": "integratedTerminal"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full Stack Debug",
+            "configurations": ["Listen for Xdebug", 
+                                "Debug Portal",
+                                "Debug Node"]
         }
     ]
 }

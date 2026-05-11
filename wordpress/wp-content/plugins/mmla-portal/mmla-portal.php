@@ -14,7 +14,10 @@ require_once __DIR__ . '/includes/auth.php';
 
 function mmla_portal_handle_logout() {
     if (isset($_GET['mmla_logout']) && $_GET['mmla_logout'] == 1) {
-        wp_logout(); // Clear WP session
+
+        // In mmla-portal.php, before wp_logout()
+        error_log("mmla-portal: wp_logout() called, REQUEST_URI: " . $_SERVER['REQUEST_URI'] . ", is_user_logged_in: " . (is_user_logged_in() ? 'true' : 'false'));
+        // wp_logout(); // Clear WP session
         wp_redirect('/portal/'); // Redirect to portal home
         exit;
     }
