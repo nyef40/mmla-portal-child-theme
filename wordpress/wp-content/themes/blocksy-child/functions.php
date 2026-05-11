@@ -45,24 +45,13 @@ if (!function_exists('get_encryption_key')) {
     }
 }
 
-// Add this to your theme's functions.php or portal plugin
-add_action('user_register', function($user_id) {
-    error_log("=== USER REGISTER HOOK FIRED ===");
-    error_log("User ID: " . $user_id);
-    $user = get_userdata($user_id);
-    error_log("Username: " . $user->user_login);
-    error_log("Email: " . $user->user_email);
-    
-    // Check if portal user record exists
-    global $wpdb;
-    $portal_user = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d",
-        $user_id
-    ));
-    error_log("Portal user record: " . print_r($portal_user, true));
-}, 10, 1);
-
-// Load portal React app loader and auth (after portal_debug exists)
+// Load portal services and auth (after portal_debug exists)
+if (is_readable(get_stylesheet_directory() . '/includes/PortalAuthService.php')) {
+    require_once get_stylesheet_directory() . '/includes/PortalAuthService.php';
+}
+if (is_readable(get_stylesheet_directory() . '/includes/PortalRegistrationService.php')) {
+    require_once get_stylesheet_directory() . '/includes/PortalRegistrationService.php';
+}
 require_once get_stylesheet_directory() . '/portal-loader.php';
 if (is_readable(get_stylesheet_directory() . '/functions-portal-auth-enhanced.php')) {
     require_once get_stylesheet_directory() . '/functions-portal-auth-enhanced.php';
@@ -465,80 +454,12 @@ function portal_register_fresh_nonce() {
  * @return array ['ok' => true] or ['ok' => false, 'message' => string]
  */
 function portal_process_registration($post) {
-    $nonce = $post['nonce'] ?? '';
-    $page_token = $post['portal_register_token'] ?? '';
-    $nonce_ok = wp_verify_nonce($nonce, 'portal_register_nonce') || wp_verify_nonce($nonce, 'portal_nonce');
-    // Fallback: one-time page token (when nonce fails e.g. cache/session on live)
-    if (!$nonce_ok && $page_token !== '') {
-        $token_key = 'portal_reg_' . hash('sha256', $page_token);
-        if (get_transient($token_key) === '1') {
-            delete_transient($token_key);
-            $nonce_ok = true;
-        }
+    if (!class_exists('PortalRegistrationService')) {
+        return ['ok' => false, 'message' => 'Registration service unavailable'];
     }
-    if (!$nonce_ok) {
-        return ['ok' => false, 'message' => 'Security check failed'];
-    }
-    $username   = sanitize_user($post['username'] ?? '');
-    $email      = sanitize_email($post['email'] ?? '');
-    $password   = $post['password'] ?? '';
-    $first_name = sanitize_text_field($post['first_name'] ?? '');
-    $last_name  = sanitize_text_field($post['last_name'] ?? '');
-    $practice   = sanitize_text_field($post['practice'] ?? $post['practice_name'] ?? '');
-    $phone      = sanitize_text_field($post['phone'] ?? '');
-    $role       = sanitize_text_field($post['role'] ?? '');
-    $specialty  = sanitize_text_field($post['specialty'] ?? '');
-    $license_number = sanitize_text_field($post['license_number'] ?? '');
-    $address    = sanitize_text_field($post['address'] ?? '');
-    $city       = sanitize_text_field($post['city'] ?? '');
-    $state      = sanitize_text_field($post['state'] ?? '');
-    $zip        = sanitize_text_field($post['zip'] ?? '');
-    if (empty($username) || empty($email) || empty($password)) {
-        return ['ok' => false, 'message' => 'Please fill in all required fields'];
-    }
-    if (username_exists($username)) {
-        return ['ok' => false, 'message' => 'Username already exists'];
-    }
-    if (email_exists($email)) {
-        return ['ok' => false, 'message' => 'Email already registered'];
-    }
-    $user_id = wp_create_user($username, $password, $email);
-    if (is_wp_error($user_id)) {
-        return ['ok' => false, 'message' => $user_id->get_error_message()];
-    }
-    update_user_meta($user_id, 'first_name', $first_name);
-    update_user_meta($user_id, 'last_name', $last_name);
-    wp_update_user(['ID' => $user_id, 'display_name' => $first_name . ' ' . $last_name]);
-    $token = wp_generate_password(32, false, false);
-    $token_hash = hash('sha256', $token);
-    $expiry = date('Y-m-d H:i:s', strtotime('+24 hours'));
     global $wpdb;
-    $inserted = $wpdb->insert($wpdb->prefix . 'portal_users', [
-        'wp_user_id'       => $user_id,
-        'username'         => $username,
-        'email'            => $email,
-        'first_name'       => $first_name,
-        'last_name'        => $last_name,
-        'phone'            => $phone ?: null,
-        'practice'         => $practice ?: null,
-        'address'          => $address ?: null,
-        'city'             => $city ?: null,
-        'state'            => $state ?: null,
-        'zip'              => $zip ?: null,
-        'email_verified'   => 0,
-        'specialty'        => $specialty ?: null,
-        'license_number'   => $license_number ?: null,
-        'role'             => $role ?: null,
-        'validation_token' => $token_hash,
-        'token_expiry'     => $expiry,
-        'created_at'       => current_time('mysql')
-    ]);
-    if (!$inserted) {
-        error_log("[Portal] Failed to insert portal_users record for user $user_id: " . $wpdb->last_error);
-        return ['ok' => false, 'message' => 'Account could not be saved. Please try again or contact support.'];
-    }
-    send_verification_email_direct($user_id, $email, $first_name, $token);
-    return ['ok' => true];
+    $service = new PortalRegistrationService($wpdb);
+    return $service->register((array) $post);
 }
 
 // Fallback: full-page POST to /register/ (when JS fails or form doesn’t use AJAX)

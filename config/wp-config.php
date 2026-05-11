@@ -4,17 +4,6 @@ date_default_timezone_set('America/Los_Angeles');
 // Set WordPress timezone
 define('WP_TIMEZONE', 'America/Los_Angeles');
 
-// Force MySQL timezone
-/**
-if (!function_exists('set_mysql_timezone')) {
-    function set_mysql_timezone() {
-        global $wpdb;
-        $wpdb->query("SET time_zone = 'America/Los_Angeles'");
-    }
-    add_action('init', 'set_mysql_timezone');
-}
-*/
-
 define('WP_DEBUG_LOG_TIMEZONE', 'America/Los_Angeles');
 if (!function_exists('getenv_docker')) {
     function getenv_docker($env, $default) {
@@ -60,7 +49,7 @@ define('WP_DISABLE_FATAL_ERROR_HANDLER', false);
 @ini_set('display_errors', 0);
 @ini_set('log_errors', 1);
 @ini_set('error_log', '/var/www/html/wp-content/debug.log');
-error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
+error_reporting(E_ALL & ~E_DEPRECATED);
 
 // WordPress SMTP
 define('WPMS_ON', true);
