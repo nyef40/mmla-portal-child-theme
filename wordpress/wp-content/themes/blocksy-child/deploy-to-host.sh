@@ -19,6 +19,9 @@ echo ""
 # 1. PHP and loader
 scp "$THEME_DIR/functions.php" "$THEME_DIR/functions-portal-auth-enhanced.php" "$THEME_DIR/portal-loader.php" "$HOST:$REMOTE_DIR/"
 echo "Uploaded functions.php, functions-portal-auth-enhanced.php, portal-loader.php"
+ssh "$HOST" "mkdir -p $REMOTE_DIR/includes"
+scp "$THEME_DIR/includes/PortalAuthService.php" "$THEME_DIR/includes/PortalRegistrationService.php" "$HOST:$REMOTE_DIR/includes/"
+echo "Uploaded includes/PortalAuthService.php, includes/PortalRegistrationService.php"
 
 # 2. Page templates (login, register, dashboard, referrals, profile, resources, contact)
 scp "$THEME_DIR/page-portal-login-enhanced.php" "$THEME_DIR/page-register-enhanced.php" "$THEME_DIR/page-dashboard.php" "$THEME_DIR/page-portal-referrals.php" "$THEME_DIR/page-profile.php" "$THEME_DIR/page-portal-resources.php" "$THEME_DIR/page-contact.php" "$HOST:$REMOTE_DIR/"

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { post } from '../utils/api';
+import { validateRegistrationPayload } from '../utils/validation';
 
 function Register() {
   const [formData, setFormData] = useState({
@@ -22,13 +23,9 @@ function Register() {
     e.preventDefault();
     setError('');
 
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters');
+    const validationError = validateRegistrationPayload(formData);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 

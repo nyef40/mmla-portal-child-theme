@@ -31,24 +31,26 @@ function handle_portal_login() {
     if (function_exists('portal_debug')) {
         portal_debug("LOGIN HANDLER - Started", $_POST);
     }
+    if (!class_exists('PortalAuthService')) {
+        wp_send_json_error('Authentication service unavailable');
+        return;
+    }
     if (!isset($_POST['nonce']) || !isset($_POST['username']) || !isset($_POST['password'])) {
         wp_send_json_error('Missing required data');
         return;
     }
 
-    // Accept: portal_login_form_nonce (from fresh-nonce endpoint), portal_login_nonce, portal_nonce (React)
-    $nonce = $_POST['nonce'];
-    $valid = wp_verify_nonce($nonce, 'portal_login_form_nonce')
-        || wp_verify_nonce($nonce, 'portal_login_nonce')
-        || wp_verify_nonce($nonce, 'portal_nonce');
-    if (!$valid) {
+    $nonce = (string) $_POST['nonce'];
+    global $wpdb;
+    $auth_service = new PortalAuthService($wpdb);
+    if (!$auth_service->isLoginNonceValid($nonce)) {
         header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
         wp_send_json_error('Security check failed');
         return;
     }
 
     $username = sanitize_text_field($_POST['username']);
-    $password = $_POST['password'];
+    $password = (string) $_POST['password'];
     $remember = isset($_POST['remember']) ? true : false;
 
     if (empty($username) || empty($password)) {
@@ -56,46 +58,12 @@ function handle_portal_login() {
         return;
     }
 
-    // Try to authenticate
-    $user = wp_authenticate($username, $password);
-
-    if (is_wp_error($user)) {
-        wp_send_json_error('Invalid username or password');
+    $login_result = $auth_service->login($username, $password, $remember);
+    if (!$login_result['ok']) {
+        wp_send_json_error($login_result['message']);
         return;
     }
-
-    // Log the user in
-    wp_clear_auth_cookie();
-    wp_set_current_user($user->ID);
-    wp_set_auth_cookie($user->ID, $remember, is_ssl());
-
-    // Update last login in user_meta table
-    update_user_meta($user->ID, 'last_login', current_time('mysql'));
-    
-    // Update last login in portal_users table
-    global $wpdb;
-    $portal_user_table = $wpdb->prefix . "portal_users";
-
-    if (function_exists('portal_debug')) {
-        portal_debug("LOGIN HANDLER - Updating last_login", [
-            'table' => $portal_user_table,
-            'user_id' => $user->ID
-        ]);
-    }
-    $update_result = $wpdb->update(
-        $portal_user_table,
-        array("last_login" => current_time("mysql")),
-        array("wp_user_id" => $user->ID),
-        array("%s"),
-        array("%d")
-    );
-
-    if (function_exists('portal_debug')) {
-        portal_debug("LOGIN HANDLER - Last login update result", [
-            'rows_affected' => $update_result,
-            'error' => $wpdb->last_error
-        ]);
-    }
+    $user = $login_result['user'];
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     wp_send_json_success([
         'message' => 'Login successful! Redirecting...',
