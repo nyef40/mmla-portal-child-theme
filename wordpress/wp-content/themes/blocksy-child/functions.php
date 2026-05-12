@@ -454,7 +454,7 @@ function is_portal_page() {
     $portal_slugs = [
         'portal', 'dashboard', 'portal-profile', 'portal-resources',
         'portal-referrals', 'portal-login', 'register', 'contact',
-        'profile', 'resources', 'referrals', 'login'  // Added child page slugs
+        'profile', 'referrals', 'login'  // child slugs under portal (not public /resources/)
     ];
     
     // Check if it's a child of portal
@@ -466,6 +466,38 @@ function is_portal_page() {
     }
     
     return in_array($post->post_name, $portal_slugs);
+}
+
+/**
+ * YouTube video IDs for the public /resources/ page (page-resources.php).
+ * Option mmla_public_resources_youtube_ids (array of IDs) overrides defaults.
+ * Constant MMLA_PUBLIC_RESOURCES_YOUTUBE_IDS (array) overrides if option empty.
+ */
+if (!function_exists('mmla_get_public_resources_youtube_ids')) {
+    function mmla_get_public_resources_youtube_ids() {
+        $opt = get_option('mmla_public_resources_youtube_ids');
+        if (is_array($opt) && count(array_filter($opt)) > 0) {
+            return array_slice(array_values(array_filter(array_map('sanitize_text_field', $opt))), 0, 9);
+        }
+        if (defined('MMLA_PUBLIC_RESOURCES_YOUTUBE_IDS') && is_array(MMLA_PUBLIC_RESOURCES_YOUTUBE_IDS)) {
+            return array_slice(MMLA_PUBLIC_RESOURCES_YOUTUBE_IDS, 0, 9);
+        }
+        // Production https://mobilemedicalla.com/resources2/ (Elementor), May 2025.
+        return apply_filters(
+            'mmla_public_resources_youtube_ids',
+            [
+                '5BhXLu3zMoQ',
+                'fz5QuBGZIZU',
+                'WJVVYk1sg0I',
+                'e0beW0LfFGo',
+                'fmrt-6E-ufY',
+                'iZ_r5ztWa4k',
+                'KL24UudgYtU',
+                'dhv4haxM_1Q',
+                'bhO7re7lOQI',
+            ]
+        );
+    }
 }
 
 // ============================================
