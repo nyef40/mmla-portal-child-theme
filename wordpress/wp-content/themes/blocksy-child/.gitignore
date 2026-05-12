@@ -32,3 +32,5 @@ test/
 
 # General
 Thumbs.db
+node_modules/
+wordpress/wp-content/src/
