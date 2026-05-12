@@ -27,6 +27,8 @@ wp-config.php
 test/
 *.bak
 *.tmp
+*.backup
+*.orig
 
 # General
 Thumbs.db
