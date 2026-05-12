@@ -122,14 +122,10 @@ function update_portal_profile_api($request) {
 }
 
 function get_portal_resources_api($request) {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'portal_resources';
-    
-    $resources = $wpdb->get_results(
-        "SELECT * FROM {$table_name} ORDER BY created_at DESC"
-    );
-    
-    return rest_ensure_response($resources);
+    if (function_exists('mmla_portal_get_resources_normalized')) {
+        return rest_ensure_response(mmla_portal_get_resources_normalized());
+    }
+    return rest_ensure_response([]);
 }
 
 function log_resource_access_api($request) {

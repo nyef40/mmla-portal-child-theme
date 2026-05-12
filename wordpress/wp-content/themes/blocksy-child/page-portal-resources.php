@@ -20,7 +20,17 @@ if (!is_user_logged_in()) {
     return;
 }
 
-get_header(); ?>
+get_header();
+
+$portal_resources = function_exists('mmla_portal_get_resources_normalized')
+    ? mmla_portal_get_resources_normalized()
+    : [];
+$res_count = count($portal_resources);
+$url_map = [];
+foreach ($portal_resources as $r) {
+    $url_map[(int) $r['id']] = $r['url'];
+}
+?>
 
 <div id="portal-page-main">
 <div class="portal-container">
@@ -36,7 +46,7 @@ get_header(); ?>
                 <div style="font-size: 3em; margin-bottom: 20px;">📋</div>
                 <h3 style="margin-bottom: 15px; font-size: 1.5em;">Referral Guidelines</h3>
                 <p style="margin-bottom: 25px; opacity: 0.9;">Step-by-step guides for patient referrals and documentation requirements.</p>
-                <span style="background: rgba(255, 255, 255, 0.2); padding: 8px 16px; border-radius: 20px; font-size: 14px;">5 Documents</span>
+                <span style="background: rgba(255, 255, 255, 0.2); padding: 8px 16px; border-radius: 20px; font-size: 14px;"><?php echo esc_html((string) $res_count); ?> Documents</span>
             </div>
             
             <div class="category-card" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); padding: 30px; border-radius: 15px; text-align: center; color: white; box-shadow: 0 10px 30px rgba(40, 167, 69, 0.3);">
@@ -59,76 +69,29 @@ get_header(); ?>
             <h2 style="color: #0A3D62; margin-bottom: 30px; font-size: 1.8em;">Available Resources</h2>
             
             <div class="resource-grid" style="display: grid; gap: 20px;">
-                <!-- Referral Guidelines -->
-                <div class="resource-item" style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1); border-left: 5px solid #17a2b8;">
+                <?php foreach ($portal_resources as $resource) :
+                    $cat = $resource['category'] ?? 'General';
+                    $th = function_exists('mmla_portal_resource_card_theme')
+                        ? mmla_portal_resource_card_theme($cat)
+                        : ['border' => '#0A3D62', 'btn' => 'linear-gradient(135deg, #0A3D62 0%, #2980b9 100%)', 'badge' => '#0A3D62'];
+                    $rid = (int) ($resource['id'] ?? 0);
+                    $dl_url = esc_url(home_url($resource['url'] ?? '/'));
+                    $meta = $resource['meta'] ?? ($resource['type'] ?? 'PDF');
+                    ?>
+                <div class="resource-item" style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1); border-left: 5px solid <?php echo esc_attr($th['border']); ?>;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
                         <div>
-                            <h3 style="color: #0A3D62; margin-bottom: 8px; font-size: 1.3em;">Understanding HIPAA Compliance</h3>
-                            <p style="color: #666; margin-bottom: 10px;">Comprehensive guide to HIPAA compliance for healthcare providers</p>
+                            <h3 style="color: #0A3D62; margin-bottom: 8px; font-size: 1.3em;"><?php echo esc_html($resource['title'] ?? ''); ?></h3>
+                            <p style="color: #666; margin-bottom: 10px;"><?php echo esc_html($resource['description'] ?? ''); ?></p>
                             <div style="display: flex; gap: 10px; align-items: center;">
-                                <span style="background: #17a2b8; color: white; padding: 4px 12px; border-radius: 15px; font-size: 12px;">Compliance</span>
-                                <span style="color: #999; font-size: 14px;">PDF • 2.3 MB</span>
+                                <span style="background: <?php echo esc_attr($th['badge']); ?>; color: white; padding: 4px 12px; border-radius: 15px; font-size: 12px;"><?php echo esc_html($cat); ?></span>
+                                <span style="color: #999; font-size: 14px;"><?php echo esc_html($meta); ?></span>
                             </div>
                         </div>
-                        <a href="#" onclick="downloadResource(1)" style="background: linear-gradient(135deg, #17a2b8 0%, #20c997 100%); color: white; padding: 10px 20px; border-radius: 20px; text-decoration: none; font-weight: 600; transition: all 0.3s ease;">Download</a>
+                        <a href="<?php echo $dl_url; ?>" onclick="downloadResource(<?php echo (int) $rid; ?>); return false;" style="background: <?php echo esc_attr($th['btn']); ?>; color: white; padding: 10px 20px; border-radius: 20px; text-decoration: none; font-weight: 600; transition: all 0.3s ease;">Download</a>
                     </div>
                 </div>
-
-                <div class="resource-item" style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1); border-left: 5px solid #28a745;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
-                        <div>
-                            <h3 style="color: #0A3D62; margin-bottom: 8px; font-size: 1.3em;">Patient Care Guidelines</h3>
-                            <p style="color: #666; margin-bottom: 10px;">Best practices for patient care in home health settings</p>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <span style="background: #28a745; color: white; padding: 4px 12px; border-radius: 15px; font-size: 12px;">Clinical</span>
-                                <span style="color: #999; font-size: 14px;">PDF • 1.8 MB</span>
-                            </div>
-                        </div>
-                        <a href="#" onclick="downloadResource(2)" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 10px 20px; border-radius: 20px; text-decoration: none; font-weight: 600; transition: all 0.3s ease;">Download</a>
-                    </div>
-                </div>
-
-                <div class="resource-item" style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1); border-left: 5px solid #dc3545;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
-                        <div>
-                            <h3 style="color: #0A3D62; margin-bottom: 8px; font-size: 1.3em;">Emergency Procedures</h3>
-                            <p style="color: #666; margin-bottom: 10px;">Step-by-step emergency response procedures</p>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <span style="background: #dc3545; color: white; padding: 4px 12px; border-radius: 15px; font-size: 12px;">Safety</span>
-                                <span style="color: #999; font-size: 14px;">PDF • 1.2 MB</span>
-                            </div>
-                        </div>
-                        <a href="#" onclick="downloadResource(3)" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; padding: 10px 20px; border-radius: 20px; text-decoration: none; font-weight: 600; transition: all 0.3s ease;">Download</a>
-                    </div>
-                </div>
-
-                <div class="resource-item" style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1); border-left: 5px solid #6f42c1;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
-                        <div>
-                            <h3 style="color: #0A3D62; margin-bottom: 8px; font-size: 1.3em;">Referral Form Template</h3>
-                            <p style="color: #666; margin-bottom: 10px;">Standard referral form template for patient transfers</p>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <span style="background: #6f42c1; color: white; padding: 4px 12px; border-radius: 15px; font-size: 12px;">Forms</span>
-                                <span style="color: #999; font-size: 14px;">DOC • 0.5 MB</span>
-                            </div>
-                        </div>
-                        <a href="#" onclick="downloadResource(4)" style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%); color: white; padding: 10px 20px; border-radius: 20px; text-decoration: none; font-weight: 600; transition: all 0.3s ease;">Download</a>
-                    </div>
-                </div>
-
-                <div class="resource-item" style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1); border-left: 5px solid #fd7e14;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
-                        <div>
-                            <h3 style="color: #0A3D62; margin-bottom: 8px; font-size: 1.3em;">Insurance Verification Checklist</h3>
-                            <p style="color: #666; margin-bottom: 10px;">Complete checklist for verifying patient insurance coverage</p>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <span style="background: #fd7e14; color: white; padding: 4px 12px; border-radius: 15px; font-size: 12px;">Administrative</span>
-                                <span style="color: #999; font-size: 14px;">PDF • 0.8 MB</span>
-                            </div>
-                        </div>
-                        <a href="#" onclick="downloadResource(5)" style="background: linear-gradient(135deg, #fd7e14 0%, #e83e8c 100%); color: white; padding: 10px 20px; border-radius: 20px; text-decoration: none; font-weight: 600; transition: all 0.3s ease;">Download</a>
-                    </div>
-                </div>
+                <?php endforeach; ?>
             </div>
         </div>
 
@@ -181,36 +144,29 @@ get_header(); ?>
 </style>
 
 <script>
+window.mmlaPortalResourceUrls = <?php echo wp_json_encode($url_map); ?>;
 function downloadResource(resourceId) {
-    // Log resource access
-    if (typeof portalData !== 'undefined') {
-        fetch(portalData.ajaxUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                action: 'log_resource_access',
-                resource_id: resourceId,
-                nonce: portalData.nonce
-            })
-        });
-    }
-    
-    // Simulate download (replace with actual file URLs)
-    const resources = {
-        1: '/wp-content/uploads/hipaa-guide.pdf',
-        2: '/wp-content/uploads/patient-care-guide.pdf',
-        3: '/wp-content/uploads/emergency-procedures.pdf',
-        4: '/wp-content/uploads/referral-form-template.doc',
-        5: '/wp-content/uploads/insurance-verification-checklist.pdf'
-    };
-    
-    if (resources[resourceId]) {
-        // Create temporary link and trigger download
-        const link = document.createElement('a');
-        link.href = resources[resourceId];
-        link.download = '';
+    var ajaxUrl = (typeof portalData !== 'undefined' && portalData.ajaxUrl) ? portalData.ajaxUrl : <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
+    var nonce = (typeof portalData !== 'undefined' && portalData.nonce) ? portalData.nonce : <?php echo wp_json_encode(wp_create_nonce('portal_nonce')); ?>;
+    fetch(ajaxUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'log_resource_access',
+            resource_id: resourceId,
+            nonce: nonce
+        })
+    }).catch(function() {});
+
+    var resources = window.mmlaPortalResourceUrls || {};
+    var url = resources[resourceId] || resources[String(resourceId)];
+    if (url) {
+        var link = document.createElement('a');
+        link.href = url.indexOf('http') === 0 ? url : new URL(url.charAt(0) === '/' ? url : '/' + url, window.location.origin).href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

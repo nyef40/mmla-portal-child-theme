@@ -503,6 +503,7 @@ function submit_referral_callback() {
     $patient_email = sanitize_email($_POST['patient_email'] ?? '');
     $reason = sanitize_text_field($_POST['reason'] ?? '');
     $notes = sanitize_textarea_field($_POST['notes'] ?? '');
+    $portal_user = id ?? null;
 
     $result = $wpdb->insert(
         $table_name,
@@ -516,7 +517,8 @@ function submit_referral_callback() {
             'reason' => $reason,
             'notes' => $notes,
             'created_at' => current_time('mysql'),
-            'is_validated' => 0
+            'is_validated' => 0,
+            'user_id' => $portal_user
         ]
     );
 

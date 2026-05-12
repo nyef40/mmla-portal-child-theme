@@ -365,12 +365,24 @@ function get_referrals_callback() {
     $table_name = $wpdb->prefix . 'referral_submissions';
 
     $referrals = $wpdb->get_results("
-        SELECT submission_id, provider_name, provider_practice, provider_email, 
+        SELECT submission_id, provider_name, provider_practice, provider_email,
                patient_name, reason, created_at, is_validated
-        FROM {$table_name} 
-        ORDER BY created_at DESC 
+        FROM {$table_name}
+        ORDER BY created_at DESC
         LIMIT 20
     ");
+
+    // Some legacy referrals were stored with MySQL AES_ENCRYPT(patient_name, 'mmla_2025').
+    // Newer rows are plaintext. try_decrypt_field() handles both transparently:
+    // decrypts encrypted bytes, passes plaintext through unchanged.
+    foreach ($referrals as $ref) {
+        if (function_exists('try_decrypt_field')) {
+            if (isset($ref->patient_name))  $ref->patient_name  = try_decrypt_field($ref->patient_name);
+            if (isset($ref->patient_email)) $ref->patient_email = try_decrypt_field($ref->patient_email);
+        }
+        // Cast tinyint to native int so JS sees `0` (falsy) instead of `"0"` (truthy).
+        if (isset($ref->is_validated)) $ref->is_validated = (int) $ref->is_validated;
+    }
 
     wp_send_json_success($referrals);
 }
@@ -392,10 +404,45 @@ function submit_referral_callback() {
     $provider_practice = sanitize_text_field($_POST['provider_practice'] ?? '');
     $provider_email = sanitize_email($_POST['provider_email'] ?? '');
     $provider_phone = sanitize_text_field($_POST['provider_phone'] ?? '');
-    $patient_name = sanitize_text_field($_POST['patient_name'] ?? '');
-    $patient_email = sanitize_email($_POST['patient_email'] ?? '');
-    $reason = sanitize_text_field($_POST['reason'] ?? '');
+    $patient_name_plain  = sanitize_text_field($_POST['patient_name']  ?? '');
+    $patient_email_plain = sanitize_email($_POST['patient_email'] ?? '');
+    $allowed_reasons = [
+        'General Consultation',
+        'ENT consultation',
+        'OMFS consultation',
+        'Neurology referral',
+        'Cardiology referral',
+        'Other',
+    ];
+    $reason_raw = sanitize_text_field($_POST['reason'] ?? '');
+    $reason = in_array($reason_raw, $allowed_reasons, true) ? $reason_raw : '';
+    if ($reason === '') {
+        wp_send_json_error('Invalid reason selected');
+        return;
+    }
+
     $notes = sanitize_textarea_field($_POST['notes'] ?? '');
+
+    // Encrypt PHI fields at rest with MySQL-compatible AES-128 ECB.
+    // Read path uses try_decrypt_field() to transparently decrypt these values.
+    $patient_name  = ($patient_name_plain  !== '' && function_exists('mysql_aes_encrypt'))
+        ? mysql_aes_encrypt($patient_name_plain)
+        : $patient_name_plain;
+    $patient_email = ($patient_email_plain !== '' && function_exists('mysql_aes_encrypt'))
+        ? mysql_aes_encrypt($patient_email_plain)
+        : $patient_email_plain;
+
+    $wp_user_id = get_current_user_id();
+    $portal_user_id = null;
+    if ($wp_user_id) {
+        $portal_user = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d LIMIT 1",
+                $wp_user_id
+            )
+        );
+        $portal_user_id = $portal_user ? (int) $portal_user : null;
+    }
 
     $result = $wpdb->insert(
         $table_name,
@@ -408,6 +455,7 @@ function submit_referral_callback() {
             'patient_email' => $patient_email,
             'reason' => $reason,
             'notes' => $notes,
+            'user_id' => $portal_user_id,
             'created_at' => current_time('mysql'),
             'is_validated' => 0
         ]
@@ -426,33 +474,13 @@ add_action('wp_ajax_submit_referral', 'submit_referral_callback');
  * Get resources data
  */
 function get_resources_callback() {
-    $resources = [
-        [
-            'id' => 1,
-            'title' => 'Understanding HIPAA Compliance',
-            'description' => 'Comprehensive guide to HIPAA compliance for healthcare providers',
-            'type' => 'PDF',
-            'url' => '/wp-content/uploads/hipaa-guide.pdf',
-            'category' => 'Compliance'
-        ],
-        [
-            'id' => 2,
-            'title' => 'Patient Care Guidelines',
-            'description' => 'Best practices for patient care in home health settings',
-            'type' => 'PDF',
-            'url' => '/wp-content/uploads/patient-care-guide.pdf',
-            'category' => 'Clinical'
-        ],
-        [
-            'id' => 3,
-            'title' => 'Emergency Procedures',
-            'description' => 'Step-by-step emergency response procedures',
-            'type' => 'PDF',
-            'url' => '/wp-content/uploads/emergency-procedures.pdf',
-            'category' => 'Safety'
-        ]
-    ];
-
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Not logged in');
+        return;
+    }
+    $resources = function_exists('mmla_portal_get_resources_normalized')
+        ? mmla_portal_get_resources_normalized()
+        : [];
     wp_send_json_success($resources);
 }
 add_action('wp_ajax_get_resources', 'get_resources_callback');

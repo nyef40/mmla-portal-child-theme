@@ -45,6 +45,283 @@ if (!function_exists('get_encryption_key')) {
     }
 }
 
+/**
+ * Replicate MySQL's AES_ENCRYPT key derivation: XOR the user key bytes
+ * across a 16-byte buffer (AES-128 ECB, zero-padded, no IV).
+ * This lets us decrypt rows that were inserted with AES_ENCRYPT(value, key).
+ */
+if (!function_exists('mysql_aes_key')) {
+    function mysql_aes_key($key) {
+        $derived = str_repeat("\0", 16);
+        $len = strlen($key);
+        for ($i = 0; $i < $len; $i++) {
+            $derived[$i % 16] = chr(ord($derived[$i % 16]) ^ ord($key[$i]));
+        }
+        return $derived;
+    }
+}
+
+/**
+ * Encrypt a value with MySQL-compatible AES_ENCRYPT (AES-128 ECB,
+ * zero-padded, XOR-folded key). Pair this with try_decrypt_field() on read.
+ *
+ * After the one-time normalization migration runs, every patient_name and
+ * patient_email row in lqbk_referral_submissions is encrypted via this function.
+ */
+if (!function_exists('mysql_aes_encrypt')) {
+    function mysql_aes_encrypt($plain, $key = null) {
+        if ($plain === null || $plain === '') return $plain;
+        if ($key === null) $key = get_encryption_key();
+        return openssl_encrypt(
+            (string) $plain,
+            'aes-128-ecb',
+            mysql_aes_key($key),
+            OPENSSL_RAW_DATA
+        );
+    }
+}
+
+/**
+ * Try-decrypt a patient_name (or any field) that *might* have been stored with
+ * MySQL's AES_ENCRYPT. Returns the decrypted UTF-8 string if it decrypts cleanly,
+ * otherwise returns the original raw value untouched (so plaintext rows pass through).
+ *
+ * Tries multiple candidate keys to handle data from different code generations.
+ */
+if (!function_exists('try_decrypt_field')) {
+    function try_decrypt_field($value) {
+        if ($value === null || $value === '' || !is_string($value)) {
+            return $value;
+        }
+        // If the value is already printable ASCII/UTF-8 with no control bytes,
+        // assume it's already plaintext and skip decryption.
+        if (mb_check_encoding($value, 'UTF-8') && !preg_match('/[\x00-\x08\x0E-\x1F\x7F]/', $value)) {
+            return $value;
+        }
+        $candidate_keys = array_filter(array_unique([
+            // 'mmla_2025',                 // legacy migration key (db-migrations/20250526_*.sql)
+            get_encryption_key(),        // current key from get_encryption_key()
+            //'portal-referral-key-16',    // hard-coded fallback in get_encryption_key()
+        ]));
+        foreach ($candidate_keys as $key) {
+            $plain = @openssl_decrypt(
+                $value,
+                'aes-128-ecb',
+                mysql_aes_key($key),
+                OPENSSL_RAW_DATA
+            );
+            if ($plain !== false
+                && $plain !== ''
+                && mb_check_encoding($plain, 'UTF-8')
+                && !preg_match('/[\x00-\x08\x0E-\x1F\x7F]/', $plain)
+            ) {
+                return $plain;
+            }
+        }
+        // Nothing decrypted cleanly — return a safe placeholder rather than binary garbage.
+        return '[encrypted]';
+    }
+}
+
+/**
+ * Portal resource list stored in wp_options (key mmla_portal_resources).
+ * Edit via wp-admin (e.g. Options or a small plugin) or update_option from code.
+ */
+if (!function_exists('mmla_portal_default_resources')) {
+    function mmla_portal_default_resources() {
+        return [
+            [
+                'id' => 1,
+                'title' => 'Understanding HIPAA Compliance',
+                'description' => 'Comprehensive guide to HIPAA compliance for healthcare providers',
+                'type' => 'PDF',
+                'url' => '/wp-content/uploads/hipaa-guide.pdf',
+                'category' => 'Compliance',
+                'meta' => 'PDF • 2.3 MB',
+            ],
+            [
+                'id' => 2,
+                'title' => 'Patient Care Guidelines',
+                'description' => 'Best practices for patient care in home health settings',
+                'type' => 'PDF',
+                'url' => '/wp-content/uploads/patient-care-guide.pdf',
+                'category' => 'Clinical',
+                'meta' => 'PDF • 1.8 MB',
+            ],
+            [
+                'id' => 3,
+                'title' => 'Emergency Procedures',
+                'description' => 'Step-by-step emergency response procedures',
+                'type' => 'PDF',
+                'url' => '/wp-content/uploads/emergency-procedures.pdf',
+                'category' => 'Safety',
+                'meta' => 'PDF • 1.2 MB',
+            ],
+            [
+                'id' => 4,
+                'title' => 'Referral Form Template',
+                'description' => 'Standard referral form template for patient transfers',
+                'type' => 'DOC',
+                'url' => '/wp-content/uploads/referral-form-template.doc',
+                'category' => 'Forms',
+                'meta' => 'DOC • 0.5 MB',
+            ],
+            [
+                'id' => 5,
+                'title' => 'Insurance Verification Checklist',
+                'description' => 'Complete checklist for verifying patient insurance coverage',
+                'type' => 'PDF',
+                'url' => '/wp-content/uploads/insurance-verification-checklist.pdf',
+                'category' => 'Administrative',
+                'meta' => 'PDF • 0.8 MB',
+            ],
+        ];
+    }
+}
+
+if (!function_exists('mmla_portal_is_legacy_ivig_resources_seed')) {
+    /**
+     * Detect the earlier 3-item default (IVIG / referral PDF / intake) so we can migrate to the 5-item catalog.
+     */
+    function mmla_portal_is_legacy_ivig_resources_seed($raw) {
+        if (!is_array($raw) || count($raw) !== 3) {
+            return false;
+        }
+        $titles = [];
+        foreach ($raw as $row) {
+            if (!is_array($row)) {
+                return false;
+            }
+            $titles[] = isset($row['title']) ? (string) $row['title'] : '';
+        }
+        return $titles[0] === 'IVIG Administration Guide'
+            && $titles[1] === 'Referral Form Template'
+            && $titles[2] === 'Patient Intake Checklist';
+    }
+}
+
+if (!function_exists('mmla_portal_migrate_legacy_resources_seed_if_needed')) {
+    function mmla_portal_migrate_legacy_resources_seed_if_needed() {
+        if ((int) get_option('mmla_portal_resources_catalog_rev', 0) >= 2) {
+            return;
+        }
+        $raw = get_option('mmla_portal_resources');
+        if (mmla_portal_is_legacy_ivig_resources_seed($raw)) {
+            update_option('mmla_portal_resources', mmla_portal_default_resources(), false);
+        }
+        update_option('mmla_portal_resources_catalog_rev', 2, false);
+    }
+}
+
+if (!function_exists('mmla_portal_resource_card_theme')) {
+    /**
+     * @return array{border:string,btn:string,badge:string}
+     */
+    function mmla_portal_resource_card_theme($category) {
+        switch ($category) {
+            case 'Compliance':
+                return [
+                    'border' => '#17a2b8',
+                    'btn' => 'linear-gradient(135deg, #17a2b8 0%, #20c997 100%)',
+                    'badge' => '#17a2b8',
+                ];
+            case 'Clinical':
+                return [
+                    'border' => '#28a745',
+                    'btn' => 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
+                    'badge' => '#28a745',
+                ];
+            case 'Safety':
+                return [
+                    'border' => '#dc3545',
+                    'btn' => 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)',
+                    'badge' => '#dc3545',
+                ];
+            case 'Forms':
+                return [
+                    'border' => '#6f42c1',
+                    'btn' => 'linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%)',
+                    'badge' => '#6f42c1',
+                ];
+            case 'Administrative':
+                return [
+                    'border' => '#fd7e14',
+                    'btn' => 'linear-gradient(135deg, #fd7e14 0%, #e83e8c 100%)',
+                    'badge' => '#fd7e14',
+                ];
+            default:
+                return [
+                    'border' => '#0A3D62',
+                    'btn' => 'linear-gradient(135deg, #0A3D62 0%, #2980b9 100%)',
+                    'badge' => '#0A3D62',
+                ];
+        }
+    }
+}
+
+if (!function_exists('mmla_portal_ensure_resources_option')) {
+    function mmla_portal_ensure_resources_option() {
+        if (!get_option('mmla_portal_resources')) {
+            update_option('mmla_portal_resources', mmla_portal_default_resources(), false);
+        }
+    }
+}
+
+if (!function_exists('mmla_portal_get_resources_normalized')) {
+    /**
+     * @return array<int, array{id:int,title:string,description:string,type:string,url:string,category:string,meta:string}>
+     */
+    function mmla_portal_get_resources_normalized() {
+        mmla_portal_ensure_resources_option();
+        mmla_portal_migrate_legacy_resources_seed_if_needed();
+        $raw = get_option('mmla_portal_resources', []);
+        if (!is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $index => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $title = isset($row['title']) ? sanitize_text_field((string) $row['title']) : '';
+            if ($title === '') {
+                continue;
+            }
+            $url = isset($row['url']) ? esc_url_raw((string) $row['url']) : '';
+            if ($url === '') {
+                continue;
+            }
+            $type = isset($row['type']) ? sanitize_text_field((string) $row['type']) : 'PDF';
+            $description = isset($row['description']) ? sanitize_textarea_field((string) $row['description']) : '';
+            $category = isset($row['category']) ? sanitize_text_field((string) $row['category']) : 'General';
+            $meta = isset($row['meta']) ? sanitize_text_field((string) $row['meta']) : '';
+            $id = isset($row['id']) ? absint($row['id']) : ($index + 1);
+            $out[] = [
+                'id' => $id,
+                'title' => $title,
+                'description' => $description,
+                'type' => $type,
+                'url' => $url,
+                'category' => $category,
+                'meta' => $meta,
+            ];
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('mmla_portal_resources_count')) {
+    function mmla_portal_resources_count() {
+        return count(mmla_portal_get_resources_normalized());
+    }
+}
+
+add_action('after_switch_theme', function () {
+    if (function_exists('mmla_portal_ensure_resources_option')) {
+        mmla_portal_ensure_resources_option();
+    }
+});
+
 // Load portal services and auth (after portal_debug exists)
 if (is_readable(get_stylesheet_directory() . '/includes/PortalAuthService.php')) {
     require_once get_stylesheet_directory() . '/includes/PortalAuthService.php';
@@ -136,12 +413,26 @@ add_filter('template_include', function($template) {
     return $template;
 }, 999);
 
-add_filter('body_class', function($classes) {
-    if (is_page(['portal-login', 'register', 'portal-profile', 'portal-resources', 'contact'])) {
+add_filter('body_class', function ($classes) {
+    if (is_page(['portal-login', 'register', 'portal-profile', 'portal-resources', 'contact', 'dashboard', 'portal-referrals', 'portal'])) {
         $classes[] = 'portal-single-view';
+    }
+    if (is_page(['dashboard', 'portal-referrals'])) {
+        $classes[] = 'portal-react-mount';
     }
     return $classes;
 }, 999);
+
+/**
+ * Portal pages use minimal templates; wpautop often injects empty <p> tags that leave a white gap at the bottom.
+ */
+add_action('template_redirect', function () {
+    if (!function_exists('is_portal_page') || !is_portal_page()) {
+        return;
+    }
+    remove_filter('the_content', 'wpautop');
+    remove_filter('the_excerpt', 'wpautop');
+}, 4);
 
 function is_portal_page() {
     global $post;
@@ -227,6 +518,31 @@ add_action('template_redirect', function() {
             .ct-header, .ct-footer, #colophon { display: none !important; }
             
             body { margin: 0; padding: 0; font-family: 'Inter', -apple-system, sans-serif; }
+
+            /* Full-viewport grey (avoids white band below React shell when body was default white) */
+            html { background-color: #f1f5f9; }
+            body.portal-single-view {
+                background: #f1f5f9 !important;
+                min-height: 100vh;
+                min-height: 100dvh;
+            }
+            #portal-root {
+                background: #f1f5f9;
+            }
+
+            /* Dashboard / referrals: strip theme bottom padding from empty loop content */
+            body.portal-react-mount .site-content,
+            body.portal-react-mount .site-main,
+            body.portal-react-mount main,
+            body.portal-react-mount #content,
+            body.portal-react-mount .content-area,
+            body.portal-react-mount .ct-container,
+            body.portal-react-mount article,
+            body.portal-react-mount .entry-content,
+            body.portal-react-mount .entry-content > *:last-child {
+                margin-bottom: 0 !important;
+                padding-bottom: 0 !important;
+            }
             
             /* Portal Header */
             .portal-header {
@@ -291,8 +607,12 @@ add_action('template_redirect', function() {
                 backdrop-filter: blur(10px);
             }
             
-            #portal-root {
+            body.portal-react-mount #portal-root {
+                min-height: calc(100dvh - 70px);
                 min-height: calc(100vh - 70px);
+                margin-bottom: 0;
+                padding-bottom: 0;
+                box-sizing: border-box;
             }
             
             /* Loading state */
@@ -357,7 +677,12 @@ add_action('template_redirect', function() {
                 </nav>
             </div>
         </div>
-        
+
+        <?php
+        // Only inject the React mount point on pages that actually run the React app.
+        // PHP-only pages (portal-profile, portal-resources, contact, portal-login, register)
+        // render their own content inside <div id="portal-page-main"> via their page templates.
+        if (is_page(['dashboard', 'portal-referrals'])): ?>
         <div id="portal-root">
             <div class="portal-init-loading">
                 <div class="spinner"></div>
@@ -365,6 +690,7 @@ add_action('template_redirect', function() {
                 <p>Preparing your experience...</p>
             </div>
         </div>
+        <?php endif; ?>
         <?php
     }, 1);
 });
@@ -375,12 +701,47 @@ add_action('template_redirect', function() {
 add_action('template_redirect', function() {
     $protected = ['dashboard', 'portal-profile', 'portal-resources', 'portal-referrals'];
     global $post;
-    
+
     if ($post && in_array($post->post_name, $protected) && !is_user_logged_in()) {
         wp_redirect(home_url('/portal-login/'));
         exit;
     }
 }, 5);
+
+// ============================================
+// 4b. STOP DUPLICATE FORMS AT THE SOURCE
+// ============================================
+// On the three PHP-only portal pages (portal-profile, portal-resources, contact)
+// the page template renders the form itself inside <div id="portal-page-main">.
+// However Elementor Pro's Theme Builder and Blocksy's content hooks may also
+// render the page (from _elementor_data postmeta or from post_content), causing
+// a duplicate form to appear ABOVE the correct one. We suppress that here.
+add_action('template_redirect', function() {
+    if (!is_page(['portal-profile', 'portal-resources', 'contact'])) return;
+
+    // 1. Blank post_content so Gutenberg/Blocksy auto-rendering produces nothing.
+    global $wp_query;
+    if (isset($wp_query->post)) {
+        $wp_query->post->post_content = '';
+        $wp_query->post->post_content_filtered = '';
+    }
+    add_filter('the_content', '__return_empty_string', PHP_INT_MAX);
+
+    // 2. Disable Elementor frontend rendering for this request.
+    if (class_exists('\Elementor\Plugin')) {
+        // Suppress Elementor's "single" Theme Builder template (Elementor Pro).
+        add_filter('elementor/theme/get_location_templates/template_id', '__return_zero', PHP_INT_MAX);
+
+        // Make Elementor think this page is NOT built with Elementor by hiding
+        // the _elementor_edit_mode flag during this request only.
+        add_filter('get_post_metadata', function($value, $object_id, $meta_key, $single) {
+            if ($meta_key === '_elementor_edit_mode' && $object_id === get_queried_object_id()) {
+                return $single ? '' : [''];
+            }
+            return $value;
+        }, 10, 4);
+    }
+}, 6);
 
 // ============================================
 // 5. LOGIN HANDLER (AJAX) – only if auth-enhanced not loaded
@@ -989,31 +1350,17 @@ add_action('wp_ajax_update_user_profile', function() {
 });
 
 // ============================================
-// 9. GET RESOURCES (AJAX)
+// 9. GET RESOURCES (AJAX) — fallback when functions-portal-auth-enhanced.php is absent
 // ============================================
-add_action('wp_ajax_get_resources', function() {
-    if (!is_user_logged_in()) {
-        wp_send_json_error('Not authorized');
-        return;
-    }
-    
-    global $wpdb;
-    $resources = $wpdb->get_results(
-        "SELECT id, title, description, file_path, access_level, created_at 
-         FROM {$wpdb->prefix}portal_resources 
-         ORDER BY title",
-        ARRAY_A
-    );
-    
-    // Add category/type based on title or access_level
-    foreach ($resources as &$r) {
-        $r['category'] = $r['access_level'] ?: 'General';
-        $r['type'] = strpos($r['file_path'] ?? '', '.pdf') !== false ? 'PDF' : 'Document';
-        $r['url'] = $r['file_path'] ?: '#';
-    }
-    
-    wp_send_json_success($resources);
-});
+if (!has_action('wp_ajax_get_resources', 'get_resources_callback')) {
+    add_action('wp_ajax_get_resources', function () {
+        if (!is_user_logged_in()) {
+            wp_send_json_error('Not authorized');
+            return;
+        }
+        wp_send_json_success(mmla_portal_get_resources_normalized());
+    });
+}
 
 // ============================================
 // 10. GET REFERRALS (AJAX)
@@ -1052,44 +1399,65 @@ add_action('wp_ajax_get_referrals', function() {
 });
 
 // ============================================
-// 11. SUBMIT REFERRAL (AJAX)
+// 11. SUBMIT REFERRAL (AJAX) — fallback when functions-portal-auth-enhanced.php is absent
 // ============================================
-add_action('wp_ajax_submit_referral', function() {
-    if (!is_user_logged_in()) {
-        wp_send_json_error('Not authorized');
-        return;
-    }
-    
-    global $wpdb;
-    $user_id = get_current_user_id();
-    
-    // Get portal user id
-    $portal_user = $wpdb->get_row($wpdb->prepare(
-        "SELECT id FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d",
-        $user_id
-    ));
-    
-    $result = $wpdb->insert($wpdb->prefix . 'referral_submissions', [
-        'provider_name'     => sanitize_text_field($_POST['provider_name'] ?? ''),
-        'provider_practice' => sanitize_text_field($_POST['provider_practice'] ?? ''),
-        'provider_email'    => sanitize_email($_POST['provider_email'] ?? ''),
-        'provider_phone'    => sanitize_text_field($_POST['provider_phone'] ?? ''),
-        'patient_name'      => sanitize_text_field($_POST['patient_name'] ?? ''),
-        'patient_email'     => sanitize_email($_POST['patient_email'] ?? ''),
-        'reason'            => sanitize_text_field($_POST['reason'] ?? ''),
-        'notes'             => sanitize_textarea_field($_POST['notes'] ?? ''),
-        'user_id'           => $portal_user->id ?? null,
-        'created_at'        => current_time('mysql'),
-        'validation_token'  => wp_generate_uuid4(),
-        'is_validated'      => 0
-    ]);
-    
-    if ($result) {
-        wp_send_json_success(['message' => 'Referral submitted successfully']);
-    } else {
-        wp_send_json_error('Failed to submit referral');
-    }
-});
+if (!has_action('wp_ajax_submit_referral', 'submit_referral_callback')) {
+    add_action('wp_ajax_submit_referral', function () {
+        if (!is_user_logged_in()) {
+            wp_send_json_error('Not authorized');
+            return;
+        }
+
+        $allowed_reasons = [
+            'General Consultation',
+            'ENT consultation',
+            'OMFS consultation',
+            'Neurology referral',
+            'Cardiology referral',
+            'Other',
+        ];
+        $reason_raw = sanitize_text_field($_POST['reason'] ?? '');
+        $reason = in_array($reason_raw, $allowed_reasons, true) ? $reason_raw : '';
+        if ($reason === '') {
+            wp_send_json_error('Invalid reason selected');
+            return;
+        }
+
+        global $wpdb;
+        $wp_user_id = get_current_user_id();
+        $portal_user_id = null;
+        if ($wp_user_id) {
+            $portal_user = $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT id FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d LIMIT 1",
+                    $wp_user_id
+                )
+            );
+            $portal_user_id = $portal_user ? (int) $portal_user : null;
+        }
+
+        $result = $wpdb->insert($wpdb->prefix . 'referral_submissions', [
+            'provider_name'     => sanitize_text_field($_POST['provider_name'] ?? ''),
+            'provider_practice' => sanitize_text_field($_POST['provider_practice'] ?? ''),
+            'provider_email'    => sanitize_email($_POST['provider_email'] ?? ''),
+            'provider_phone'    => sanitize_text_field($_POST['provider_phone'] ?? ''),
+            'patient_name'      => sanitize_text_field($_POST['patient_name'] ?? ''),
+            'patient_email'     => sanitize_email($_POST['patient_email'] ?? ''),
+            'reason'            => $reason,
+            'notes'             => sanitize_textarea_field($_POST['notes'] ?? ''),
+            'user_id'           => $portal_user_id,
+            'created_at'        => current_time('mysql'),
+            'validation_token'  => wp_generate_uuid4(),
+            'is_validated'      => 0,
+        ]);
+
+        if ($result) {
+            wp_send_json_success(['message' => 'Referral submitted successfully']);
+        } else {
+            wp_send_json_error('Failed to submit referral');
+        }
+    });
+}
 
 // ============================================
 // 12. CONTACT FORM (AJAX)
@@ -1141,9 +1509,9 @@ add_action('wp_ajax_get_dashboard_stats', function() {
         $portal_user['id'] ?? 0
     )) ?: 0;
     
-    $resource_count = $wpdb->get_var(
-        "SELECT COUNT(*) FROM {$wpdb->prefix}portal_resources"
-    ) ?: 0;
+    $resource_count = function_exists('mmla_portal_resources_count')
+        ? mmla_portal_resources_count()
+        : 0;
     
     wp_send_json_success([
         'user' => [

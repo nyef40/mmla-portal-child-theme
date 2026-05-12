@@ -117,7 +117,15 @@ function Referrals() {
                 <h3>Referral Details</h3>
                 <div className="form-group">
                   <label>Reason for Referral *</label>
-                  <input type="text" name="reason" required />
+                  <select name="reason" id="reason" required defaultValue="">
+                    <option value="">-- Select Reason --</option>
+                    <option value="General Consultation">General Consultation</option>
+                    <option value="ENT consultation">ENT consultation</option>
+                    <option value="OMFS consultation">OMFS consultation</option>
+                    <option value="Neurology referral">Neurology referral</option>
+                    <option value="Cardiology referral">Cardiology referral</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
                 <div className="form-group">
                   <label>Additional Notes</label>

@@ -61,10 +61,6 @@ add_action('init', function() {
             }
         }, 9999);
 
-        if ($load_react) {
-            add_action('wp_body_open', function() {
-                echo '<div id="portal-root" style="min-height: 100vh;"></div>';
-            }, 1);
-        }
+        // #portal-root is output from functions.php (portal template) with loading shell — avoid duplicate id + extra white space.
     }
 });

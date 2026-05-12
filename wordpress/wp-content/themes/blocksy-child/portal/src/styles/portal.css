@@ -593,6 +593,23 @@
   border-left: 4px solid var(--primary);
 }
 
+/* Native <select>: extra vertical space so long labels (e.g. "Cardiology referral") are not clipped */
+.referral-form-card select,
+#reason {
+  min-height: 3.25rem;
+  padding: 0.875rem 2.75rem 0.875rem 1rem;
+  line-height: 1.45;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+.referral-form-card select option,
+#reason option {
+  padding: 0.65rem 1rem;
+  line-height: 1.5;
+  white-space: normal;
+}
+
 .form-section {
   margin-bottom: 24px;
 }
