@@ -444,6 +444,13 @@ function submit_referral_callback() {
         $portal_user_id = $portal_user ? (int) $portal_user : null;
     }
 
+    if (function_exists('mmla_referral_ensure_validation_token_column')) {
+        mmla_referral_ensure_validation_token_column();
+    }
+
+    $raw_validation_token = wp_generate_password(48, false, false);
+    $validation_token_hash = hash('sha256', $raw_validation_token);
+
     $result = $wpdb->insert(
         $table_name,
         [
@@ -457,13 +464,27 @@ function submit_referral_callback() {
             'notes' => $notes,
             'user_id' => $portal_user_id,
             'created_at' => current_time('mysql'),
-            'is_validated' => 0
+            'is_validated' => 0,
+            'validation_token' => $validation_token_hash,
         ]
     );
 
     if ($result === false) {
         wp_send_json_error('Failed to submit referral');
         return;
+    }
+
+    $submission_id = (int) $wpdb->insert_id;
+
+    if (function_exists('mmla_send_referral_provider_validation_email')) {
+        mmla_send_referral_provider_validation_email(
+            $submission_id,
+            $provider_email,
+            $provider_name,
+            $patient_name_plain,
+            $reason,
+            $raw_validation_token
+        );
     }
 
     wp_send_json_success('Referral submitted successfully');

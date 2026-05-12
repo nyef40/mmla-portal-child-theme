@@ -1200,6 +1200,182 @@ function handle_portal_email_verification() {
     exit;
 }
 
+// ============================================
+// REFERRAL — provider email validation (confirm receipt)
+// ============================================
+
+if (!function_exists('mmla_referral_ensure_validation_token_column')) {
+    function mmla_referral_ensure_validation_token_column() {
+        global $wpdb;
+        $table = $wpdb->prefix . 'referral_submissions';
+        $exists = $wpdb->get_results("SHOW COLUMNS FROM `{$table}` LIKE 'validation_token'");
+        if (empty($exists)) {
+            $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `validation_token` VARCHAR(64) NULL DEFAULT NULL");
+        }
+    }
+}
+
+if (!function_exists('mmla_referral_validation_url')) {
+    function mmla_referral_validation_url($submission_id, $raw_token) {
+        return add_query_arg(
+            [
+                'action' => 'validate_referral',
+                'sid'    => (int) $submission_id,
+                'token'  => $raw_token,
+            ],
+            home_url('/')
+        );
+    }
+}
+
+if (!function_exists('mmla_send_referral_provider_validation_email')) {
+    /**
+     * Notify the receiving provider with a one-time link to mark the referral as validated.
+     *
+     * @param int    $submission_id
+     * @param string $provider_email
+     * @param string $provider_name
+     * @param string $patient_name_plain Display name (plaintext)
+     * @param string $reason
+     * @param string $raw_token           Secret sent in URL; only SHA-256 hash is stored in DB.
+     * @return bool Whether wp_mail reported success
+     */
+    function mmla_send_referral_provider_validation_email(
+        $submission_id,
+        $provider_email,
+        $provider_name,
+        $patient_name_plain,
+        $reason,
+        $raw_token
+    ) {
+        $provider_email = sanitize_email($provider_email);
+        if ($provider_email === '' || !is_email($provider_email)) {
+            error_log('[Portal] Referral validation email skipped: invalid provider_email');
+            return false;
+        }
+
+        $link = esc_url(mmla_referral_validation_url((int) $submission_id, $raw_token));
+        $site = wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES);
+        $subject = sprintf('[%s] Confirm referral — %s', $site, $patient_name_plain !== '' ? $patient_name_plain : 'New referral');
+
+        $patient_esc = esc_html($patient_name_plain !== '' ? $patient_name_plain : 'Patient');
+        $provider_esc = esc_html($provider_name);
+        $reason_esc = esc_html($reason);
+
+        $message = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f4f7fa;">'
+            . '<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;"><tr><td align="center">'
+            . '<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">'
+            . '<tr><td style="background:linear-gradient(135deg,#0A3D62 0%,#2980b9 100%);padding:28px 32px;text-align:center;">'
+            . '<h1 style="color:#fff;margin:0;font-size:22px;">' . esc_html($site) . '</h1>'
+            . '<p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:14px;">Referral confirmation</p></td></tr>'
+            . '<tr><td style="padding:32px;">'
+            . '<p style="color:#334155;font-size:16px;line-height:1.6;margin:0 0 16px;">Hello ' . $provider_esc . ',</p>'
+            . '<p style="color:#334155;font-size:16px;line-height:1.6;margin:0 0 16px;">'
+            . 'A referral was submitted through the provider portal for patient <strong>' . $patient_esc . '</strong>'
+            . ($reason_esc !== '' ? ' (reason: <strong>' . $reason_esc . '</strong>).' : '.')
+            . '</p>'
+            . '<p style="color:#334155;font-size:16px;line-height:1.6;margin:0 0 24px;">'
+            . 'Please click the button below to confirm you received this referral. This marks the referral as <strong>validated</strong> in the portal.</p>'
+            . '<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">'
+            . '<a href="' . $link . '" style="display:inline-block;background:linear-gradient(135deg,#0A3D62 0%,#2980b9 100%);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;">Confirm referral</a>'
+            . '</td></tr></table>'
+            . '<p style="color:#64748b;font-size:13px;line-height:1.5;margin:24px 0 0;">If the button does not work, copy and paste this link into your browser:<br><a href="' . $link . '" style="color:#2980b9;word-break:break-all;">' . $link . '</a></p>'
+            . '</td></tr></table></td></tr></table></body></html>';
+
+        $from_email = sanitize_email(
+            apply_filters(
+                'mmla_portal_mail_from_email',
+                defined('MMLA_PORTAL_FROM_EMAIL') && MMLA_PORTAL_FROM_EMAIL !== ''
+                    ? MMLA_PORTAL_FROM_EMAIL
+                    : 'nick.yefimov@mobilemedicalla.com'
+            )
+        );
+        if ($from_email === '') {
+            $from_email = 'nick.yefimov@mobilemedicalla.com';
+        }
+        $headers = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: Mobile Medical LA Portal <' . $from_email . '>',
+        ];
+
+        $sent = wp_mail($provider_email, $subject, $message, $headers);
+        if (!$sent) {
+            error_log('[Portal] Failed to send referral validation email to ' . $provider_email . ' for submission ' . (int) $submission_id);
+        } else {
+            error_log('[Portal] Referral validation email sent to ' . $provider_email . ' submission ' . (int) $submission_id);
+        }
+        return (bool) $sent;
+    }
+}
+
+add_action('init', 'mmla_handle_referral_validation_request', 5);
+
+function mmla_handle_referral_validation_request() {
+    if (!isset($_GET['action']) || $_GET['action'] !== 'validate_referral') {
+        return;
+    }
+
+    $sid = absint($_GET['sid'] ?? 0);
+    $token = isset($_GET['token']) ? sanitize_text_field(wp_unslash((string) $_GET['token'])) : '';
+
+    if ($sid < 1 || $token === '') {
+        wp_safe_redirect(home_url('/?referral_error=invalid_link'));
+        exit;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'referral_submissions';
+    $hash = hash('sha256', $token);
+
+    $row = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT submission_id, is_validated, validation_token FROM `{$table}` WHERE submission_id = %d LIMIT 1",
+            $sid
+        )
+    );
+
+    if (!$row || empty($row->validation_token)) {
+        error_log('[Portal] validate_referral: missing row or token for sid=' . $sid);
+        wp_safe_redirect(home_url('/?referral_error=not_found'));
+        exit;
+    }
+
+    if (!hash_equals((string) $row->validation_token, $hash)
+        && !(strlen((string) $row->validation_token) === 36 && hash_equals((string) $row->validation_token, $token))
+    ) {
+        error_log('[Portal] validate_referral: token mismatch sid=' . $sid);
+        wp_safe_redirect(home_url('/?referral_error=invalid_token'));
+        exit;
+    }
+
+    if ((int) $row->is_validated === 1) {
+        wp_safe_redirect(home_url('/?referral_msg=already_validated'));
+        exit;
+    }
+
+    $sql = $wpdb->prepare(
+        "UPDATE `{$table}` SET `is_validated` = 1, `validation_token` = NULL WHERE `submission_id` = %d AND `is_validated` = 0 AND (`validation_token` = %s OR `validation_token` = %s)",
+        $sid,
+        $hash,
+        $token
+    );
+    $updated = $wpdb->query($sql);
+
+    if ($updated === false) {
+        error_log('[Portal] validate_referral: DB update failed sid=' . $sid);
+        wp_safe_redirect(home_url('/?referral_error=update_failed'));
+        exit;
+    }
+
+    if ((int) $updated === 0) {
+        wp_safe_redirect(home_url('/?referral_msg=already_validated'));
+        exit;
+    }
+
+    wp_safe_redirect(home_url('/?referral_validated=1'));
+    exit;
+}
+
 /**
  * Resend verification email (AJAX handler)
  */
@@ -1448,6 +1624,13 @@ if (!has_action('wp_ajax_submit_referral', 'submit_referral_callback')) {
             $portal_user_id = $portal_user ? (int) $portal_user : null;
         }
 
+        if (function_exists('mmla_referral_ensure_validation_token_column')) {
+            mmla_referral_ensure_validation_token_column();
+        }
+
+        $raw_validation_token = wp_generate_password(48, false, false);
+        $validation_token_hash = hash('sha256', $raw_validation_token);
+
         $result = $wpdb->insert($wpdb->prefix . 'referral_submissions', [
             'provider_name'     => sanitize_text_field($_POST['provider_name'] ?? ''),
             'provider_practice' => sanitize_text_field($_POST['provider_practice'] ?? ''),
@@ -1459,11 +1642,23 @@ if (!has_action('wp_ajax_submit_referral', 'submit_referral_callback')) {
             'notes'             => sanitize_textarea_field($_POST['notes'] ?? ''),
             'user_id'           => $portal_user_id,
             'created_at'        => current_time('mysql'),
-            'validation_token'  => wp_generate_uuid4(),
+            'validation_token'  => $validation_token_hash,
             'is_validated'      => 0,
         ]);
 
         if ($result) {
+            $submission_id = (int) $wpdb->insert_id;
+            $provider_email = sanitize_email($_POST['provider_email'] ?? '');
+            if (function_exists('mmla_send_referral_provider_validation_email')) {
+                mmla_send_referral_provider_validation_email(
+                    $submission_id,
+                    $provider_email,
+                    sanitize_text_field($_POST['provider_name'] ?? ''),
+                    sanitize_text_field($_POST['patient_name'] ?? ''),
+                    $reason,
+                    $raw_validation_token
+                );
+            }
             wp_send_json_success(['message' => 'Referral submitted successfully']);
         } else {
             wp_send_json_error('Failed to submit referral');
