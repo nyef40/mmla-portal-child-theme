@@ -31,12 +31,19 @@ function portal_debug($message, $data = null, $file = 'portal-debug.log') {
 }
 
 /**
- * Encryption key for referral data (AES). Use PORTAL_ENCRYPTION_KEY in wp-config to override.
+ * Encryption key for referral PHI (AES). Resolution order:
+ * 1. PORTAL_ENCRYPTION_KEY — explicit override in wp-config
+ * 2. MMLA_ENCRYPTION_KEY — project standard (local + production)
+ * 3. AUTH_KEY — WordPress salt (legacy / fallback only)
+ * 4. Hard-coded dev fallback (do not use in production)
  */
 if (!function_exists('get_encryption_key')) {
     function get_encryption_key() {
         if (defined('PORTAL_ENCRYPTION_KEY') && PORTAL_ENCRYPTION_KEY !== '') {
             return PORTAL_ENCRYPTION_KEY;
+        }
+        if (defined('MMLA_ENCRYPTION_KEY') && MMLA_ENCRYPTION_KEY !== '') {
+            return MMLA_ENCRYPTION_KEY;
         }
         if (defined('AUTH_KEY') && AUTH_KEY !== '') {
             return AUTH_KEY;
@@ -98,11 +105,16 @@ if (!function_exists('try_decrypt_field')) {
         if (mb_check_encoding($value, 'UTF-8') && !preg_match('/[\x00-\x08\x0E-\x1F\x7F]/', $value)) {
             return $value;
         }
-        $candidate_keys = array_filter(array_unique([
-            // 'mmla_2025',                 // legacy migration key (db-migrations/20250526_*.sql)
-            get_encryption_key(),        // current key from get_encryption_key()
-            //'portal-referral-key-16',    // hard-coded fallback in get_encryption_key()
-        ]));
+        // Try keys in a fixed order that matches db-migrations / normalize script:
+        // legacy MySQL AES_ENCRYPT(..., 'mmla_2025'), then wp-config constants, then WP salts.
+        $candidate_keys = array_values(array_filter(array_unique([
+            'mmla_2025',
+            (defined('MMLA_ENCRYPTION_KEY') && MMLA_ENCRYPTION_KEY !== '') ? MMLA_ENCRYPTION_KEY : null,
+            (defined('PORTAL_ENCRYPTION_KEY') && PORTAL_ENCRYPTION_KEY !== '') ? PORTAL_ENCRYPTION_KEY : null,
+            get_encryption_key(),
+            (defined('AUTH_KEY') && AUTH_KEY !== '') ? AUTH_KEY : null,
+            'portal-referral-key-16',
+        ])));
         foreach ($candidate_keys as $key) {
             $plain = @openssl_decrypt(
                 $value,
@@ -1363,40 +1375,40 @@ if (!has_action('wp_ajax_get_resources', 'get_resources_callback')) {
 }
 
 // ============================================
-// 10. GET REFERRALS (AJAX)
+// 10. GET REFERRALS (AJAX) — fallback when functions-portal-auth-enhanced.php is absent
 // ============================================
-add_action('wp_ajax_get_referrals', function() {
-    if (!is_user_logged_in()) {
-        wp_send_json_error('Not authorized');
-        return;
-    }
-    
-    global $wpdb;
-    $user_id = get_current_user_id();
-    
-    // Get portal_user id
-    $portal_user = $wpdb->get_row($wpdb->prepare(
-        "SELECT id FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d",
-        $user_id
-    ));
-    
-    $referrals = $wpdb->get_results($wpdb->prepare(
-        "SELECT submission_id, provider_name, provider_practice, provider_email, 
+if (!has_action('wp_ajax_get_referrals', 'get_referrals_callback')) {
+    add_action('wp_ajax_get_referrals', function () {
+        if (!is_user_logged_in()) {
+            wp_send_json_error('Not authorized');
+            return;
+        }
+
+        global $wpdb;
+        $user_id = get_current_user_id();
+
+        $portal_user = $wpdb->get_row($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d",
+            $user_id
+        ));
+
+        $referrals = $wpdb->get_results($wpdb->prepare(
+            "SELECT submission_id, provider_name, provider_practice, provider_email, 
                 reason, notes, created_at, is_validated
          FROM {$wpdb->prefix}referral_submissions 
          WHERE user_id = %d OR user_id IS NULL
          ORDER BY created_at DESC 
          LIMIT 50",
-        $portal_user->id ?? 0
-    ), ARRAY_A);
-    
-    // Decrypt patient_name for display (simplified - shows as "Patient")
-    foreach ($referrals as &$ref) {
-        $ref['patient_name'] = 'Patient #' . $ref['submission_id'];
-    }
-    
-    wp_send_json_success($referrals);
-});
+            $portal_user->id ?? 0
+        ), ARRAY_A);
+
+        foreach ($referrals as &$ref) {
+            $ref['patient_name'] = 'Patient #' . $ref['submission_id'];
+        }
+
+        wp_send_json_success($referrals);
+    });
+}
 
 // ============================================
 // 11. SUBMIT REFERRAL (AJAX) — fallback when functions-portal-auth-enhanced.php is absent
