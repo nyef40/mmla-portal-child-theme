@@ -8,6 +8,9 @@
  * https://mobilemedicalla.com/resources2/ — override with option
  * mmla_public_resources_youtube_ids (array of 11-char IDs) or filter
  * mmla_public_resources_youtube_ids.
+ *
+ * When this page is edited with Elementor, the theme does not append a second
+ * video grid (use filter mmla_public_resources_append_video_grid to override).
  */
 
 if (!defined('ABSPATH')) {
@@ -24,9 +27,13 @@ if (function_exists('portal_debug')) {
 
 get_header();
 
+$post_id = get_queried_object_id();
 $video_ids = function_exists('mmla_get_public_resources_youtube_ids')
     ? mmla_get_public_resources_youtube_ids()
     : [];
+$show_theme_grid = !empty($video_ids)
+    && function_exists('mmla_should_append_public_resources_video_grid')
+    && mmla_should_append_public_resources_video_grid($post_id);
 ?>
 
 <main id="primary" class="mmla-public-resources">
@@ -45,7 +52,7 @@ $video_ids = function_exists('mmla_get_public_resources_youtube_ids')
         endwhile;
         ?>
 
-        <?php if (!empty($video_ids)) : ?>
+        <?php if ($show_theme_grid) : ?>
             <section class="mmla-youtube-section" aria-label="Video resources">
                 <h2 class="mmla-youtube-heading">Video resources</h2>
                 <div class="mmla-youtube-grid">

@@ -470,8 +470,15 @@ function is_portal_page() {
 
 /**
  * YouTube video IDs for the public /resources/ page (page-resources.php).
- * Option mmla_public_resources_youtube_ids (array of IDs) overrides defaults.
- * Constant MMLA_PUBLIC_RESOURCES_YOUTUBE_IDS (array) overrides if option empty.
+ *
+ * Precedence:
+ * 1. Option `mmla_public_resources_youtube_ids` (array of 11-char IDs), if non-empty.
+ * 2. Constant `MMLA_PUBLIC_RESOURCES_YOUTUBE_IDS` (PHP 7+ array), if defined — see config/wp-config.php.
+ * 3. Filter `mmla_public_resources_youtube_ids` default list (aligned with production /resources2/).
+ *
+ * Hide the grid: `add_filter('mmla_public_resources_youtube_ids', '__return_empty_array');`
+ * Force theme grid under Elementor: `add_filter('mmla_public_resources_append_video_grid', '__return_true');`
+ * Page title / intro: edit the WordPress page with slug `resources` (not the portal URL /portal-resources/).
  */
 if (!function_exists('mmla_get_public_resources_youtube_ids')) {
     function mmla_get_public_resources_youtube_ids() {
@@ -499,6 +506,58 @@ if (!function_exists('mmla_get_public_resources_youtube_ids')) {
         );
     }
 }
+
+/**
+ * Whether page-resources.php should append the theme YouTube grid below the_content().
+ * Skipped by default when the page is built with Elementor (videos already in the layout).
+ *
+ * @param int $post_id
+ * @return bool
+ */
+if (!function_exists('mmla_should_append_public_resources_video_grid')) {
+    function mmla_should_append_public_resources_video_grid($post_id) {
+        $post_id = (int) $post_id;
+        if ($post_id < 1) {
+            return false;
+        }
+        $decision = apply_filters('mmla_public_resources_append_video_grid', null, $post_id);
+        if ($decision === false) {
+            return false;
+        }
+        if ($decision === true) {
+            return true;
+        }
+        if (get_post_meta($post_id, '_elementor_edit_mode', true) === 'builder') {
+            return false;
+        }
+        return true;
+    }
+}
+
+/**
+ * Elementor Free newer than Elementor Pro: Pro’s `pro-preloaded-elements-handlers` can throw
+ * `elementorCommon.helpers.softDeprecated is not a function` in the console. Mitigate on the
+ * public Resources page by switching to the lazy `pro-elements-handlers` bundle when registered.
+ * Long-term fix: upgrade Elementor Pro to a version compatible with your Elementor core (e.g. 3.31.x with 3.31.x Pro).
+ */
+add_action('wp_enqueue_scripts', function () {
+    if (!is_page('resources')) {
+        return;
+    }
+    if (!defined('ELEMENTOR_VERSION') || !defined('ELEMENTOR_PRO_VERSION')) {
+        return;
+    }
+    if (version_compare(ELEMENTOR_VERSION, ELEMENTOR_PRO_VERSION, '<=')) {
+        return;
+    }
+    if (!wp_script_is('pro-preloaded-elements-handlers', 'enqueued')) {
+        return;
+    }
+    wp_dequeue_script('pro-preloaded-elements-handlers');
+    if (wp_script_is('pro-elements-handlers', 'registered')) {
+        wp_enqueue_script('pro-elements-handlers');
+    }
+}, 100);
 
 // ============================================
 // 2. ENQUEUE PORTAL ASSETS
