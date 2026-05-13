@@ -361,6 +361,8 @@ add_action('template_redirect', function() {
         '/portal/resources/' => '/portal-resources/',
         '/portal/referrals/' => '/portal-referrals/',
         '/portal/contact/' => '/contact/',
+        // Live uses /resources2/ as canonical; local content is on /resources/ (page-resources template).
+        '/resources2/' => '/resources/',
     ];
     foreach ($redirects as $from => $to) {
         if ($uri === $from || $uri === rtrim($from, '/')) {

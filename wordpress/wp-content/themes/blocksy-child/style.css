@@ -12,3 +12,139 @@ Author: MMLA
 }
 */
 
+/* --- MMLA: Blocksy header/footer, full-width bars, type scale, branding --- */
+/*
+ * Blocksy uses #header.ct-header / #footer.ct-footer and .ct-container for row width.
+ * Older .site-header rules did not match the live theme structure.
+ */
+
+/* Full-width header & footer inner rows (fixes boxed .ct-container on /resources/ etc.) */
+#header.ct-header [data-row] > .ct-container,
+#header.ct-header [data-row] > .ct-container-fluid,
+#footer.ct-footer .ct-container,
+#footer.ct-footer .ct-container-fluid {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box;
+    padding-left: clamp(16px, 4vw, 40px) !important;
+    padding-right: clamp(16px, 4vw, 40px) !important;
+}
+
+/* When the footer root is itself a boxed .ct-container */
+#footer.ct-footer.ct-container {
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+/* Shorter header rows (theme sets --height on [data-row]) */
+#header.ct-header [data-row] {
+    --height: 52px !important;
+    --shrink-height: 48px !important;
+}
+
+#header.ct-header [data-row] > div {
+    min-height: 48px !important;
+    padding-block: 6px !important;
+}
+
+/* Tighter overall header chrome */
+#header.ct-header .site-logo-container {
+    --logo-max-height: 44px !important;
+    height: auto !important;
+    max-height: 44px !important;
+}
+
+#header.ct-header .site-logo-container img,
+#header.ct-header .site-logo-container svg {
+    max-height: 44px !important;
+    width: auto !important;
+    height: auto !important;
+}
+
+/* Primary nav / header links — professional, not oversized */
+#header.ct-header .ct-header-menu a,
+#header.ct-header .menu-item > a,
+#header.ct-header .ct-header-text,
+#header.ct-header .ct-header-cta {
+    font-size: 14px !important;
+}
+
+/* Hide text site title if logo image already shows the name (Blocksy: .site-branding > .site-title-container > span.site-title) */
+.site-header .site-title,
+.ct-header .site-title,
+.site-header h1.site-title,
+#header.ct-header .site-branding .site-title {
+    display: none !important;
+}
+/* Footer: less vertical padding, readable small type */
+#footer.ct-footer {
+    --footer-container-padding: 18px 0 !important;
+}
+
+#footer.ct-footer [data-row] > div {
+    padding-block: 14px !important;
+}
+
+#footer.ct-footer p,
+#footer.ct-footer a,
+#footer.ct-footer li,
+#footer.ct-footer .ct-footer-copyright,
+#footer.ct-footer .widget {
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+}
+
+#footer.ct-footer .site-logo-container {
+    --logo-max-height: 40px !important;
+    max-height: 40px !important;
+}
+
+/* Site content typography — scoped to theme shell so portal-only pages stay on portal.css */
+#main-container {
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+#main-container p,
+#main-container li,
+#main-container td,
+#main-container .entry-content {
+    font-size: 15px !important;
+    line-height: 1.6 !important;
+}
+
+#main-container h1,
+#main-container .h1 {
+    font-size: 1.625rem !important;
+    line-height: 1.25 !important;
+}
+
+#main-container h2,
+#main-container .h2 {
+    font-size: 1.3125rem !important;
+    line-height: 1.3 !important;
+}
+
+#main-container h3,
+#main-container .h3 {
+    font-size: 1.125rem !important;
+    line-height: 1.35 !important;
+}
+
+#main-container h4 {
+    font-size: 1rem !important;
+}
+
+/* Public resources template: keep body class rules for any extra wrappers */
+body.page-template-page-resources #header.ct-header [data-row] > .ct-container,
+body.page-template-page-resources #header.ct-header [data-row] > .ct-container-fluid,
+body.page-template-page-resources #footer.ct-footer .ct-container,
+body.page-template-page-resources #footer.ct-footer .ct-container-fluid,
+body.page-slug-resources #header.ct-header [data-row] > .ct-container,
+body.page-slug-resources #header.ct-header [data-row] > .ct-container-fluid,
+body.page-slug-resources #footer.ct-footer .ct-container,
+body.page-slug-resources #footer.ct-footer .ct-container-fluid {
+    max-width: 100% !important;
+    width: 100% !important;
+}
+

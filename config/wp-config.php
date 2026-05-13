@@ -24,6 +24,25 @@ define('DB_CHARSET', 'utf8');
 define('DB_COLLATE', '');
 $table_prefix = 'lqbk_';
 define('MMLA_ENCRYPTION_KEY', 'mmla_2025');
+
+/**
+ * Public /resources/ page (theme: page-resources.php) — optional YouTube overrides.
+ *
+ * Precedence: (1) WP option mmla_public_resources_youtube_ids if non-empty array
+ *             (2) constant MMLA_PUBLIC_RESOURCES_YOUTUBE_IDS if defined (PHP 7+ array)
+ *             (3) theme defaults (same nine videos as production /resources2/).
+ *
+ * Hide the 3×3 embed grid (use only the page editor / Elementor body): in the child theme:
+ *   add_filter('mmla_public_resources_youtube_ids', '__return_empty_array');
+ * With Elementor, the theme grid is skipped automatically; use `mmla_public_resources_append_video_grid` to force it.
+ *
+ * Example — custom list (max 9 IDs shown):
+ * define('MMLA_PUBLIC_RESOURCES_YOUTUBE_IDS', [
+ *     '5BhXLu3zMoQ', 'fz5QuBGZIZU', 'WJVVYk1sg0I',
+ * ]);
+ */
+define('MMLA_PUBLIC_RESOURCES_YOUTUBE_IDS', [ '5BhXLu3zMoQ', 'fz5QuBGZIZU' ]);
+
 define('MYSQL_SSL', false);
 define('MYSQL_CLIENT_FLAGS', 0);
 define('FORCE_SSL_ADMIN', false);

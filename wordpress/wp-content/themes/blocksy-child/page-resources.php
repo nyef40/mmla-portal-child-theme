@@ -88,22 +88,25 @@ $show_theme_grid = !empty($video_ids)
 .mmla-public-resources {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 32px 20px 60px;
+    padding: 24px 20px 48px;
 }
 .mmla-public-resources-inner .entry-title {
     color: #0A3D62;
-    font-size: clamp(1.75rem, 4vw, 2.25rem);
-    margin: 0 0 1rem;
+    font-size: 1.625rem;
+    font-weight: 600;
+    margin: 0 0 0.75rem;
 }
 .mmla-public-resources-content {
-    margin-bottom: 2.5rem;
+    margin-bottom: 2rem;
     color: #334155;
     line-height: 1.6;
+    font-size: 15px;
 }
 .mmla-youtube-heading {
     color: #0A3D62;
-    font-size: 1.35rem;
-    margin: 0 0 1.25rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0 0 1rem;
 }
 .mmla-youtube-grid {
     display: grid;

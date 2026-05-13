@@ -536,48 +536,61 @@
   overflow-x: auto;
 }
 
-.data-table {
+/* Referrals list (dashboard) */
+.referrals-table {
   width: 100%;
   border-collapse: collapse;
+  margin-top: 16px;
+  font-size: 14px;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
-.data-table th,
-.data-table td {
-  padding: 14px 16px;
+.referrals-table thead {
+  background: #1a3a5c;
+  color: #fff;
+}
+
+.referrals-table th,
+.referrals-table td {
+  padding: 11px 16px;
   text-align: left;
-  border-bottom: 1px solid var(--gray-100);
+  border-bottom: 1px solid #e8ecf0;
 }
 
-.data-table th {
-  background: var(--gray-50);
+.referrals-table th {
   font-weight: 600;
   font-size: 13px;
-  color: var(--gray-600);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
-.data-table td {
-  font-size: 14px;
-  color: var(--gray-700);
+.referrals-table tbody tr:hover {
+  background: #f5f8fa;
+}
+
+.referrals-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .status-badge {
   display: inline-block;
-  padding: 4px 12px;
-  border-radius: 20px;
+  padding: 2px 10px;
+  border-radius: 12px;
   font-size: 12px;
   font-weight: 600;
 }
 
 .status-badge.pending {
-  background: #fef3c7;
-  color: #92400e;
+  background: #fff3cd;
+  color: #856404;
 }
 
 .status-badge.validated {
-  background: #d1fae5;
-  color: #065f46;
+  background: #d1e7dd;
+  color: #0a3622;
 }
 
 /* Page Header Row */

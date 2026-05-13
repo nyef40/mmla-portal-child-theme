@@ -146,7 +146,7 @@ function Referrals() {
             <p className="empty-text">No referrals submitted yet.</p>
           ) : (
             <div className="table-container">
-              <table className="data-table">
+              <table className="referrals-table">
                 <thead>
                   <tr>
                     <th>Patient</th>
