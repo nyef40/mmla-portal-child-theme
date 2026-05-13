@@ -537,29 +537,23 @@ if (!function_exists('mmla_should_append_public_resources_video_grid')) {
 }
 
 /**
- * Elementor Free newer than Elementor Pro: Pro’s `pro-preloaded-elements-handlers` can throw
- * `elementorCommon.helpers.softDeprecated is not a function` in the console. Mitigate on the
- * public Resources page by switching to the lazy `pro-elements-handlers` bundle when registered.
- * Long-term fix: upgrade Elementor Pro to a version compatible with your Elementor core (e.g. 3.31.x with 3.31.x Pro).
+ * Elementor core newer than Elementor Pro: Pro’s `pro-preloaded-elements-handlers.js` calls
+ * `elementorCommon.helpers.softDeprecated`, which current Elementor core no longer defines →
+ * uncaught TypeError and broken Pro frontend widgets. Shim before that script runs (all public
+ * pages that enqueue it). Long-term fix: upgrade Elementor Pro to match core (e.g. 3.31.x with 3.31.x).
  */
 add_action('wp_enqueue_scripts', function () {
-    if (!is_page('resources')) {
-        return;
-    }
-    if (!defined('ELEMENTOR_VERSION') || !defined('ELEMENTOR_PRO_VERSION')) {
-        return;
-    }
-    if (version_compare(ELEMENTOR_VERSION, ELEMENTOR_PRO_VERSION, '<=')) {
+    if (is_admin()) {
         return;
     }
     if (!wp_script_is('pro-preloaded-elements-handlers', 'enqueued')) {
         return;
     }
-    wp_dequeue_script('pro-preloaded-elements-handlers');
-    if (wp_script_is('pro-elements-handlers', 'registered')) {
-        wp_enqueue_script('pro-elements-handlers');
-    }
-}, 100);
+    $shim = <<<'JS'
+(function(){try{var c=window.elementorCommon;if(!c)return;var h=c.helpers||(c.helpers={});if(typeof h.softDeprecated!=="function"){h.softDeprecated=function(){}}}catch(e){}})();
+JS;
+    wp_add_inline_script('pro-preloaded-elements-handlers', $shim, 'before');
+}, 99999);
 
 // ============================================
 // 2. ENQUEUE PORTAL ASSETS
