@@ -380,6 +380,7 @@ add_action('phpmailer_init', function ($phpmailer) {
 add_filter('comments_open', '__return_false', 20, 2);
 add_filter('pings_open', '__return_false', 20, 2);
 add_filter('comments_array', '__return_empty_array', 10, 2);
+remove_action('wp_head', 'feed_links_extra', 3);
 
 // Load portal services and auth (after portal_debug exists)
 if (is_readable(get_stylesheet_directory() . '/includes/PortalAuthService.php')) {
