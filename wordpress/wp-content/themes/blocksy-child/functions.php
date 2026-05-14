@@ -334,6 +334,48 @@ add_action('after_switch_theme', function () {
     }
 });
 
+/**
+ * Canonical From address for all portal/theme wp_mail() usage.
+ * Filter: mmla_portal_mail_from_email. Optional wp-config: MMLA_PORTAL_FROM_EMAIL.
+ * Must match a mailbox Google Workspace / WP Mail SMTP can send as (bounce / envelope Sender).
+ */
+if (!function_exists('mmla_portal_outbound_from_email')) {
+    function mmla_portal_outbound_from_email() {
+        $default = 'nick.yefimov@mobilemedicalla.com';
+        if (defined('MMLA_PORTAL_FROM_EMAIL') && MMLA_PORTAL_FROM_EMAIL !== '') {
+            $default = (string) MMLA_PORTAL_FROM_EMAIL;
+        }
+        $email = apply_filters('mmla_portal_mail_from_email', $default);
+        $email = sanitize_email($email);
+        return ($email !== '' && is_email($email)) ? $email : 'nick.yefimov@mobilemedicalla.com';
+    }
+}
+
+if (!function_exists('mmla_portal_outbound_from_name')) {
+    function mmla_portal_outbound_from_name() {
+        $name = apply_filters(
+            'mmla_portal_mail_from_name',
+            wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES)
+        );
+        $name = is_string($name) ? trim($name) : '';
+        return $name !== '' ? $name : 'Mobile Medical LA Portal';
+    }
+}
+
+/**
+ * GoDaddy/cPanel often sets envelope MAIL FROM to account@server.host (undeliverable).
+ * WP Mail SMTP uses From for SMTP auth, but bounces still go to Sender/Return-Path — force it.
+ */
+add_action('phpmailer_init', function ($phpmailer) {
+    if (!is_object($phpmailer)) {
+        return;
+    }
+    $from = mmla_portal_outbound_from_email();
+    if (is_email($from)) {
+        $phpmailer->Sender = $from;
+    }
+}, 5, 1);
+
 // Load portal services and auth (after portal_debug exists)
 if (is_readable(get_stylesheet_directory() . '/includes/PortalAuthService.php')) {
     require_once get_stylesheet_directory() . '/includes/PortalAuthService.php';
@@ -1035,9 +1077,11 @@ function send_verification_email_direct($user_id, $email, $first_name, $token) {
     </body>
     </html>';
     
+    $from_addr = mmla_portal_outbound_from_email();
     $headers = [
         'Content-Type: text/html; charset=UTF-8',
-        'From: Mobile Medical LA Portal <nick.yefimov@mobilemedicalla.com>'
+        'From: Mobile Medical LA Portal <' . $from_addr . '>',
+        'Reply-To: ' . $from_addr,
     ];
     
     $sent = wp_mail($email, $subject, $message, $headers);
@@ -1197,9 +1241,11 @@ function send_portal_verification_email($user_id) {
     </html>';
     
     // Set HTML headers
+    $from_addr = mmla_portal_outbound_from_email();
     $headers = [
         'Content-Type: text/html; charset=UTF-8',
-        'From: Mobile Medical LA Portal <nick.yefimov@mobilemedicalla.com>'
+        'From: Mobile Medical LA Portal <' . $from_addr . '>',
+        'Reply-To: ' . $from_addr,
     ];
     
     // Send email
@@ -1369,20 +1415,11 @@ if (!function_exists('mmla_send_referral_provider_validation_email')) {
             . '<p style="color:#64748b;font-size:13px;line-height:1.5;margin:24px 0 0;">If the button does not work, copy and paste this link into your browser:<br><a href="' . $link . '" style="color:#2980b9;word-break:break-all;">' . $link . '</a></p>'
             . '</td></tr></table></td></tr></table></body></html>';
 
-        $from_email = sanitize_email(
-            apply_filters(
-                'mmla_portal_mail_from_email',
-                defined('MMLA_PORTAL_FROM_EMAIL') && MMLA_PORTAL_FROM_EMAIL !== ''
-                    ? MMLA_PORTAL_FROM_EMAIL
-                    : 'nick.yefimov@mobilemedicalla.com'
-            )
-        );
-        if ($from_email === '') {
-            $from_email = 'nick.yefimov@mobilemedicalla.com';
-        }
+        $from_email = mmla_portal_outbound_from_email();
         $headers = [
             'Content-Type: text/html; charset=UTF-8',
             'From: Mobile Medical LA Portal <' . $from_email . '>',
+            'Reply-To: ' . $from_email,
         ];
 
         $sent = wp_mail($provider_email, $subject, $message, $headers);

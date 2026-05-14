@@ -156,7 +156,8 @@ function handle_contact_form_submission() {
     // Send email notification
     $admin_email = get_option('admin_email');
     $site_name = get_bloginfo('name');
-    
+    $from_addr = mmla_portal_outbound_from_email();
+
     // Email to admin
     $admin_subject = '[' . $site_name . '] New Contact Form Submission: ' . $subject;
     $admin_message = "New contact form submission received:\n\n";
@@ -169,7 +170,7 @@ function handle_contact_form_submission() {
     $admin_message .= "IP Address: " . $_SERVER['REMOTE_ADDR'] . "\n";
 
     $headers = [
-        'From: ' . $site_name . ' <noreply@' . $_SERVER['HTTP_HOST'] . '>',
+        'From: ' . $site_name . ' <' . $from_addr . '>',
         'Reply-To: ' . $first_name . ' ' . $last_name . ' <' . $email . '>',
         'Content-Type: text/plain; charset=UTF-8'
     ];
@@ -189,7 +190,7 @@ function handle_contact_form_submission() {
     $user_message .= "Your message:\n{$message}";
 
     $user_headers = [
-        'From: ' . $site_name . ' <noreply@' . $_SERVER['HTTP_HOST'] . '>',
+        'From: ' . $site_name . ' <' . $from_addr . '>',
         'Content-Type: text/plain; charset=UTF-8'
     ];
 
@@ -530,18 +531,16 @@ add_action('wp_ajax_log_resource_access', 'log_resource_access_callback');
  * Configure WordPress mail settings for better email delivery
  */
 function configure_wp_mail() {
-    // Set content type to HTML for better formatting
-    add_filter('wp_mail_content_type', function() {
+    add_filter('wp_mail_content_type', function () {
         return 'text/html';
     });
-    
-    // Set from name and email
-    add_filter('wp_mail_from_name', function() {
-        return get_bloginfo('name');
+
+    add_filter('wp_mail_from_name', function () {
+        return mmla_portal_outbound_from_name();
     });
-    
-    add_filter('wp_mail_from', function() {
-        return 'noreply@' . $_SERVER['HTTP_HOST'];
+
+    add_filter('wp_mail_from', function () {
+        return mmla_portal_outbound_from_email();
     });
 }
 add_action('init', 'configure_wp_mail');
