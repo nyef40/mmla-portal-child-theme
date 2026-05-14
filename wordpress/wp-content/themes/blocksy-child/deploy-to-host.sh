@@ -35,10 +35,11 @@ ssh "$HOST" "cd $REMOTE_DIR/portal/dist && rm -f login.js dashboard.js register.
 echo "Uploaded portal/dist/portal.js, portal.css (old chunks removed on host)"
 
 # 4. Test script in theme root (run on host: ./test-auth.sh)
-scp "$THEME_DIR/test-auth.sh" "$THEME_DIR/test-register.sh" "$HOST:$REMOTE_DIR/"
-echo "Uploaded test-auth.sh (run on host: chmod +x test-auth.sh && ./test-auth.sh) and test-register.sh"
+scp "$THEME_DIR/test-auth.sh" "$THEME_DIR/test-register.sh" "$THEME_DIR/wp-godaddy.sh" "$HOST:$REMOTE_DIR/"
+echo "Uploaded test-auth.sh, test-register.sh, wp-godaddy.sh (run on host: chmod +x wp-godaddy.sh)"
 
 # 5. Optional: scripts folder so host has test-auth.sh in portal/scripts too
 ssh "$HOST" "mkdir -p $REMOTE_DIR/portal/scripts"
 scp "$THEME_DIR/portal/scripts/test-auth.sh" "$HOST:$REMOTE_DIR/portal/scripts/" 2>/dev/null || true
-echo "Done. On host run: cd $REMOTE_DIR && chmod +x test-auth.sh && PORTAL_USER=mmla2024 PORTAL_PASS=tiger2025 ./test-auth.sh"
+echo "Done. WP-CLI: chmod +x $REMOTE_DIR/wp-godaddy.sh && $REMOTE_DIR/wp-godaddy.sh option get admin_email"
+echo "     Auth test: cd $REMOTE_DIR && chmod +x test-auth.sh && PORTAL_USER=... PORTAL_PASS=... ./test-auth.sh"

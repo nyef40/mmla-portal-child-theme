@@ -376,6 +376,11 @@ add_action('phpmailer_init', function ($phpmailer) {
     }
 }, 5, 1);
 
+// Disable comments and pingbacks sitewide (spam reduction; complements Settings → Discussion).
+add_filter('comments_open', '__return_false', 20, 2);
+add_filter('pings_open', '__return_false', 20, 2);
+add_filter('comments_array', '__return_empty_array', 10, 2);
+
 // Load portal services and auth (after portal_debug exists)
 if (is_readable(get_stylesheet_directory() . '/includes/PortalAuthService.php')) {
     require_once get_stylesheet_directory() . '/includes/PortalAuthService.php';
