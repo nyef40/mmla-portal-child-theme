@@ -408,9 +408,24 @@ add_action('template_redirect', function() {
         '/portal/resources/' => '/portal-resources/',
         '/portal/referrals/' => '/portal-referrals/',
         '/portal/contact/' => '/contact/',
-        // Live uses /resources2/ as canonical; local content is on /resources/ (page-resources template).
-        '/resources2/' => '/resources/',
     ];
+    /*
+     * Do NOT redirect /resources2/ → /resources/ on production by default: many live sites
+     * already use SEO plugins or server rules that send /resources/ → /resources2/ (old
+     * canonical). Theme + host redirects in opposite directions = ERR_TOO_MANY_REDIRECTS.
+     * Local only: mirror /resources2/ to the page-resources template at /resources/.
+     * To force on production after removing duplicate host/SEO rules:
+     *   add_filter('mmla_redirect_resources2_to_resources', '__return_true');
+     */
+    $host = wp_parse_url(home_url('/'), PHP_URL_HOST);
+    $local_resources2_redirect = $host && (
+        str_contains($host, 'localhost')
+        || str_contains($host, '127.0.0.1')
+        || str_ends_with($host, '.local')
+    );
+    if (apply_filters('mmla_redirect_resources2_to_resources', $local_resources2_redirect)) {
+        $redirects['/resources2/'] = '/resources/';
+    }
     foreach ($redirects as $from => $to) {
         if ($uri === $from || $uri === rtrim($from, '/')) {
             wp_redirect(home_url($to), 301);
