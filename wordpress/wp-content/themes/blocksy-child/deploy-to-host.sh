@@ -18,7 +18,10 @@ echo ""
 
 # 1. PHP and loader
 scp "$THEME_DIR/functions.php" "$THEME_DIR/functions-portal-auth-enhanced.php" "$THEME_DIR/portal-loader.php" "$HOST:$REMOTE_DIR/"
-echo "Uploaded functions.php, functions-portal-auth-enhanced.php, portal-loader.php"
+ssh "$HOST" "mkdir -p $REMOTE_DIR/includes $REMOTE_DIR/js"
+scp "$THEME_DIR/includes/"*.php "$HOST:$REMOTE_DIR/includes/"
+scp "$THEME_DIR/js/fix-links.js" "$HOST:$REMOTE_DIR/js/"
+echo "Uploaded functions.php, includes/, js/fix-links.js, portal-loader.php"
 ssh "$HOST" "mkdir -p $REMOTE_DIR/includes"
 scp "$THEME_DIR/includes/PortalAuthService.php" "$THEME_DIR/includes/PortalRegistrationService.php" "$HOST:$REMOTE_DIR/includes/"
 echo "Uploaded includes/PortalAuthService.php, includes/PortalRegistrationService.php"

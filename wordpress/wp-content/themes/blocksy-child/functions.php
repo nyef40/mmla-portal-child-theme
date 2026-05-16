@@ -351,6 +351,28 @@ if (!function_exists('mmla_portal_outbound_from_email')) {
     }
 }
 
+if (!function_exists('mmla_portal_login_redirect_url')) {
+    /**
+     * After portal login, honor ?redirect_to= when it points to this site (e.g. /portal-referrals/).
+     */
+    function mmla_portal_login_redirect_url() {
+        $fallback = home_url('/dashboard/');
+        if (empty($_GET['redirect_to'])) {
+            return $fallback;
+        }
+        $raw = wp_unslash((string) $_GET['redirect_to']);
+        $url = wp_validate_redirect($raw, false);
+        if (!$url) {
+            $path = '/' . ltrim($raw, '/');
+            $url = home_url($path);
+        }
+        if (strpos($url, home_url()) !== 0) {
+            return $fallback;
+        }
+        return $url;
+    }
+}
+
 if (!function_exists('mmla_portal_outbound_from_name')) {
     function mmla_portal_outbound_from_name() {
         $name = apply_filters(
@@ -394,6 +416,18 @@ if (is_readable(get_stylesheet_directory() . '/functions-portal-auth-enhanced.ph
     require_once get_stylesheet_directory() . '/functions-portal-auth-enhanced.php';
 }
 
+$mmla_url_fixes = get_stylesheet_directory() . '/includes/mmla-site-url-fixes.php';
+if (is_readable($mmla_url_fixes)) {
+    require_once $mmla_url_fixes;
+}
+
+if (class_exists('WPForms') || defined('WPFORMS_VERSION')) {
+    $mmla_wpforms = get_stylesheet_directory() . '/includes/wpforms-referral-legacy.php';
+    if (is_readable($mmla_wpforms)) {
+        require_once $mmla_wpforms;
+    }
+}
+
 // ============================================
 // 0a. REDIRECTS: /portal/ -> /dashboard/; old /portal/xxx/ -> correct slugs
 // ============================================
@@ -432,6 +466,20 @@ add_action('template_redirect', function() {
             wp_redirect(home_url($to), 301);
             exit;
         }
+    }
+
+    // Option C: single referral path via portal (no duplicate WPForms public form).
+    if (apply_filters('mmla_redirect_refer_a_patient_to_portal', true) && is_page('refer-a-patient')) {
+        $portal_referrals = home_url('/portal-referrals/');
+        if (!is_user_logged_in()) {
+            $portal_referrals = add_query_arg(
+                'redirect_to',
+                rawurlencode(home_url('/portal-referrals/')),
+                home_url('/portal-login/')
+            );
+        }
+        wp_safe_redirect($portal_referrals, 301);
+        exit;
     }
 }, 0);
 

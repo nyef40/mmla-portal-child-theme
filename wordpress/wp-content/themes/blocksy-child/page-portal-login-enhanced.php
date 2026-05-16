@@ -19,7 +19,10 @@ if (is_user_logged_in()) {
         'redirect_to' => '/portal-login/'
     ]);
     
-    wp_redirect(home_url('/dashboard/'));
+    $after_login = function_exists('mmla_portal_login_redirect_url')
+        ? mmla_portal_login_redirect_url()
+        : home_url('/dashboard/');
+    wp_safe_redirect($after_login);
     exit;
 }
 

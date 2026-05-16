@@ -65,9 +65,13 @@ function handle_portal_login() {
     }
     $user = $login_result['user'];
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    $redirect = function_exists('mmla_portal_login_redirect_url')
+        ? mmla_portal_login_redirect_url()
+        : home_url('/dashboard/');
+
     wp_send_json_success([
         'message' => 'Login successful! Redirecting...',
-        'redirect' => home_url('/dashboard/'),
+        'redirect' => $redirect,
         'user_id' => $user->ID,
         'user_name' => $user->display_name
     ]);
