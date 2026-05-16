@@ -1,27 +1,33 @@
 /**
  * Fix dev URLs in front-end links (localhost in DB exports; missing :8080 on local Docker).
+ * Uses URL parsing so we never turn http://localhost:8080 into http://localhost:8080:8080.
  */
 document.addEventListener('DOMContentLoaded', function () {
     var home = (typeof mmlaFixLinks !== 'undefined' && mmlaFixLinks.homeUrl)
         ? mmlaFixLinks.homeUrl.replace(/\/$/, '')
         : '';
 
-    var devHostPatterns = [
-        /^https?:\/\/localhost:8080/i,
-        /^https?:\/\/localhost/i,
-    ];
-
-    function rewriteHref(href) {
+    function rewriteDevLocalhostHref(href) {
         if (!href || !home) {
             return href;
         }
-        var out = href;
-        devHostPatterns.forEach(function (re) {
-            if (re.test(out)) {
-                out = out.replace(re, home);
+        if (href.charAt(0) === '#' || href.indexOf('mailto:') === 0 || href.indexOf('tel:') === 0) {
+            return href;
+        }
+
+        try {
+            var parsed = new URL(href, window.location.origin);
+            if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+                return href;
             }
-        });
-        return out;
+            var homeUrl = new URL(home + '/');
+            parsed.protocol = homeUrl.protocol;
+            parsed.hostname = homeUrl.hostname;
+            parsed.port = homeUrl.port;
+            return parsed.href;
+        } catch (e) {
+            return href;
+        }
     }
 
     document.querySelectorAll('a[href]').forEach(function (link) {
@@ -29,7 +35,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!href) {
             return;
         }
-        var fixed = rewriteHref(href);
+        var fixed = rewriteDevLocalhostHref(href);
         if (fixed !== href) {
             link.setAttribute('href', fixed);
         }
@@ -40,16 +46,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!href) {
             return;
         }
-        var fixed = rewriteHref(href);
+        var fixed = rewriteDevLocalhostHref(href);
         if (fixed !== href) {
             button.setAttribute('href', fixed);
         }
     });
-
-    // Local Docker: menu/export sometimes uses http://localhost/ without port.
-    if (window.location.hostname === 'localhost' && window.location.port === '8080') {
-        document.querySelectorAll('a[href^="http://localhost/"]').forEach(function (link) {
-            link.href = link.href.replace('http://localhost/', 'http://localhost:8080/');
-        });
-    }
 });
