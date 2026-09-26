@@ -1042,10 +1042,19 @@ add_action('template_redirect', function() {
                     flex-wrap: wrap !important;
                     row-gap: 6px;
                 }
+                /* Mirrors the portal's own mobile layout: "Portal" sits as its own pill button
+                   on the top row (like the portal header's "Main Site" button) instead of being
+                   just another item in the wrapping nav. display:contents removes the actions
+                   box itself, so its two children (the Portal link, the nav) become direct items
+                   of .portal-header-top instead — the Portal link (small, natural width) stays on
+                   row 1 next to brand+title, then the nav (width:100%, below) wraps to row 2. */
                 .portal-header--main-site .portal-header-actions {
-                    width: 100% !important;
-                    justify-content: flex-end;
-                    margin-left: 0;
+                    display: contents !important;
+                }
+                .main-site-portal-link {
+                    order: 1 !important;
+                    flex: 0 0 auto;
+                    margin-left: auto;
                 }
                 /* Content-based sizing (flex: 0 0 auto, previous commit) fixed each label
                    rendering on its own single line, but the 6 labels combined still didn't fit
@@ -1053,6 +1062,7 @@ add_action('template_redirect', function() {
                    entirely. Cut font/padding/gap further, with a large safety margin this time,
                    so the total width reliably clears even the narrowest phones. */
                 .portal-header--main-site .portal-nav {
+                    order: 2 !important;
                     width: 100% !important;
                     flex-wrap: nowrap !important;
                     justify-content: space-between;
@@ -1134,7 +1144,14 @@ add_action('template_redirect', function() {
                 flex: 0 0 auto;
                 gap: 4px;
             }
+            /* Desktop: "Portal" and the nav live together in one row (order keeps Portal last,
+               at the far right, even though it's first in the DOM — needed first in the DOM so
+               mobile, below, can place it on the top row before the nav wraps to the row below). */
+            .main-site-portal-link {
+                order: 2;
+            }
             .portal-header--main-site .portal-nav {
+                order: 1;
                 flex-wrap: nowrap;
                 gap: 4px;
             }
@@ -1416,6 +1433,13 @@ add_action('template_redirect', function() {
                 background: rgba(255, 255, 255, 0.2) !important;
                 color: #ffffff !important;
             }
+            @media (max-width: 640px) {
+                /* Same treatment as the "Call to Action" bars elsewhere: an H1 in a compact
+                   colored bar was still at the full 26px page-title size and wrapped to 2 lines. */
+                #main-container .elementor-element-5331479 .elementor-heading-title {
+                    font-size: 20px !important;
+                }
+            }
             <?php endif; ?>
             <?php if ($is_main_bar && is_front_page()): ?>
             /* Home hero currently carries ~200px of Elementor padding around two lines of text;
@@ -1433,6 +1457,25 @@ add_action('template_redirect', function() {
             }
             .elementor-element-6baee9e6 .elementor-heading-title {
                 color: rgba(10, 61, 98, 0.75) !important;
+            }
+            @media (max-width: 640px) {
+                #hero-section {
+                    padding: 20px 16px !important;
+                }
+                /* #main-container prefix required on all three: the theme has an analogous
+                   "#main-container h2 { font-size: 1.3125rem !important; }" rule (and presumably
+                   h3) alongside the h1 one documented above — same ID-vs-class specificity issue,
+                   confirmed by re-checking actual matched styles rather than assuming H2/H3 were
+                   exempt just because H1 was the one already known about. */
+                #main-container .elementor-element-3b4f5bbd .elementor-heading-title {
+                    font-size: 20px !important;
+                }
+                #main-container .elementor-element-3e0fd40e .elementor-heading-title {
+                    font-size: 17px !important;
+                }
+                #main-container .elementor-element-70e9121f .elementor-heading-title {
+                    font-size: 17px !important;
+                }
             }
             <?php endif; ?>
         </style>
@@ -1469,17 +1512,21 @@ add_action('template_redirect', function() {
                             <?php endif; ?>
                             <a href="<?php echo esc_url(home_url('/')); ?>" class="back-to-site">Main Site</a>
                         <?php else: ?>
+                            <?php // "Provider Login" and "Provider Dashboard" removed: /portal/ (the
+                            // "Portal" button below) redirects both anonymous and logged-in visitors
+                            // to the same destination those items pointed to, so they were exact
+                            // duplicates of "Portal" for every visitor state. "Portal" itself is a
+                            // separate element (not part of the <nav> list) so mobile can place it
+                            // as its own button on the top row, the way the portal's own header
+                            // places "Main Site" — see the desktop `order` + mobile `display:contents`
+                            // rules in <style> that reunite/split it from the rest of the menu. ?>
+                            <a href="<?php echo esc_url(home_url('/portal/')); ?>" class="back-to-site main-site-portal-link <?php echo $current === 'portal' ? 'active' : ''; ?>">Portal</a>
                             <nav class="portal-nav">
-                                <?php // "Provider Login" and "Provider Dashboard" removed: /portal/ (the
-                                // "Portal" link below) redirects both anonymous and logged-in visitors
-                                // to the same destination those items pointed to, so they were exact
-                                // duplicates of "Portal" for every visitor state. ?>
                                 <a href="<?php echo esc_url(home_url('/')); ?>" class="<?php echo is_front_page() ? 'active' : ''; ?>">Home</a>
                                 <a href="<?php echo esc_url(home_url('/our-services/')); ?>" class="<?php echo $current === 'our-services' ? 'active' : ''; ?>">Our Services</a>
                                 <a href="<?php echo esc_url(home_url('/about-us/')); ?>" class="<?php echo $current === 'about-us' ? 'active' : ''; ?>">About Us</a>
                                 <a href="<?php echo esc_url(home_url('/ivig-news/')); ?>" class="<?php echo $current === 'ivig-news' ? 'active' : ''; ?>">IVIG News</a>
                                 <a href="<?php echo esc_url(home_url('/resources2/')); ?>" class="<?php echo $current === 'resources2' ? 'active' : ''; ?>">Resources</a>
-                                <a href="<?php echo esc_url(home_url('/portal/')); ?>" class="<?php echo $current === 'portal' ? 'active' : ''; ?>">Portal</a>
                             </nav>
                         <?php endif; ?>
                     </div>
