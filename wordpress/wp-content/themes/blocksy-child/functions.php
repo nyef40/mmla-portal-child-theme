@@ -1135,7 +1135,13 @@ add_action('template_redirect', function() {
                 flex-wrap: nowrap;
                 gap: 4px;
             }
-            @media (max-width: 1100px) {
+            /* min-width: 641px is critical here — this was previously unbounded
+               (max-width: 1100px alone), which ALSO matches every phone width. Since it comes
+               after the @media (max-width: 640px) block below in source order, with equal
+               specificity, it was silently winning at phone widths too — every attempt to shrink
+               the mobile nav further had no real effect because this rule (12px, 7px/10px
+               padding) was overriding it the whole time. Scoped to the tablet range only now. */
+            @media (min-width: 641px) and (max-width: 1100px) {
                 .portal-header--main-site .portal-nav a {
                     padding: 7px 10px;
                     font-size: 12px;
@@ -1223,9 +1229,16 @@ add_action('template_redirect', function() {
             .elementor-element-6188f1c9, .elementor-element-646ce5dc, .elementor-element-763a421c {
                 margin: 0 !important;
             }
-            .elementor-element-20ab6947 .elementor-heading-title,
-            .elementor-element-c3bc36e .elementor-heading-title,
-            .elementor-element-69fcc976 .elementor-heading-title {
+            /* #main-container prefix is required, not decorative: Blocksy has a theme-level
+               "#main-container h1 { font-size: 1.625rem !important; }" rule. An ID selector
+               beats a class-only selector on specificity even when both use !important — no
+               amount of !important or source-order tricks on a class selector can override it.
+               Real (verified via computed styles, not guessed) rendered size had been 26px this
+               whole time regardless of what was written here. Matching its ID in our own
+               selector is what actually wins. */
+            #main-container .elementor-element-20ab6947 .elementor-heading-title,
+            #main-container .elementor-element-c3bc36e .elementor-heading-title,
+            #main-container .elementor-element-69fcc976 .elementor-heading-title {
                 font-size: 16px !important;
                 white-space: nowrap;
             }
@@ -1269,9 +1282,9 @@ add_action('template_redirect', function() {
                 #cta-section,
                 .elementor-element-4be0b6f,
                 .elementor-element-5f56ce99 {
-                    /* Matches the top bar's own current mobile height: 13px header-inner padding
-                       + 28px brand-icon row + 4px gap + ~16px shrunk-nav row ≈ 61px. */
-                    min-height: 61px !important;
+                    /* Verified via real computed layout (not estimated): once the hidden button-
+                       wrapper padding below is zeroed, natural content height is ~51px. */
+                    min-height: 50px !important;
                     padding: 4px 12px !important;
                     display: flex !important;
                     flex-direction: column !important;
@@ -1298,6 +1311,7 @@ add_action('template_redirect', function() {
                     justify-content: center;
                     gap: 6px !important;
                     order: 2 !important;
+                    padding: 0 !important;
                 }
                 .elementor-element-1f005b0f > .e-con-inner,
                 .elementor-element-2652459e > .e-con-inner,
@@ -1305,18 +1319,35 @@ add_action('template_redirect', function() {
                     display: flex !important;
                     flex-direction: row !important;
                     gap: 6px !important;
+                    padding: 0 !important;
+                }
+                /* The real source of most of the bar's height: each button WIDGET WRAPPER
+                   (not the .elementor-button link inside it, which was already tuned) carries
+                   its own Elementor-assigned padding: 15px 30px — 56px tall per button, found by
+                   inspecting actual computed styles rather than guessing further. */
+                .elementor-element-457c9cb9, .elementor-element-3265939, .elementor-element-4c11a21e,
+                .elementor-element-6188f1c9, .elementor-element-646ce5dc, .elementor-element-763a421c {
+                    padding: 0 !important;
+                }
+                .elementor-element-225e9252 > .elementor-widget-wrap,
+                .elementor-element-7ee5b06d > .elementor-widget-wrap,
+                .elementor-element-65b5b6a > .elementor-widget-wrap {
+                    padding: 0 !important;
                 }
                 .elementor-element-20ab6947,
                 .elementor-element-c3bc36e,
                 .elementor-element-69fcc976 {
                     order: 1 !important;
                 }
-                .elementor-element-20ab6947 .elementor-heading-title,
-                .elementor-element-c3bc36e .elementor-heading-title,
-                .elementor-element-69fcc976 .elementor-heading-title {
-                    /* 7px still didn't clear the narrowest phones; cut further with a wide
-                       margin (nowrap guarantees it never wraps or grows the bar regardless). */
-                    font-size: 6px !important;
+                #main-container .elementor-element-20ab6947 .elementor-heading-title,
+                #main-container .elementor-element-c3bc36e .elementor-heading-title,
+                #main-container .elementor-element-69fcc976 .elementor-heading-title {
+                    /* Every previous size (11px down to 6px) was never actually applied — the
+                       theme's #main-container h1 rule (see base rule above) was winning on
+                       specificity every time regardless of the value written here, silently
+                       rendering at 26px. Now that the selector actually wins, 10px comfortably
+                       fits the 31-character label with real margin to spare. */
+                    font-size: 10px !important;
                     white-space: nowrap !important;
                 }
                 /* Buttons made larger and more legible now that the label above takes up less
