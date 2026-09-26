@@ -751,6 +751,17 @@ add_action('template_redirect', function() {
         <style>
             /* Hide theme header everywhere the unified bar replaces it */
             header, .site-header, #masthead, .ct-header { display: none !important; }
+            /* The actual cause of "dead space below copyright" on real mobile devices (never
+               reproducible in headless/WebKit testing, and confirmed via a real screenshot to be
+               a plain white area below a grey-toned page): html/body have no explicit background
+               on main-site pages, defaulting to browser white. Mobile Safari (and Chrome) reveal
+               extra space at the bottom of the page during elastic overscroll bounce and when the
+               address bar auto-collapses to expand the viewport — both touch-scroll-only
+               behaviors that don't exist with a mouse wheel, which is why this is "mobile only"
+               and undetectable in any automated/headless test. Matching html/body to the page's
+               own light-grey tone means that revealed sliver is invisible instead of reading as a
+               broken gap, regardless of the exact browser mechanism exposing it. */
+            html, body { background-color: #F5F6FA; }
             /* Blocksy's theme-wide sticky-footer pattern, applied on EVERY page this code
                touches (not just portal pages — the earlier fix here was scoped to $is_portal
                only, so any main-site page with shorter content, or shorter on a device with a
