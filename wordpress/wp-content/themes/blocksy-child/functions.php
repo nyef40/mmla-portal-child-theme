@@ -742,6 +742,23 @@ add_action('template_redirect', function() {
         <style>
             /* Hide theme header everywhere the unified bar replaces it */
             header, .site-header, #masthead, .ct-header { display: none !important; }
+            /* Blocksy's theme-wide sticky-footer pattern, applied on EVERY page this code
+               touches (not just portal pages — the earlier fix here was scoped to $is_portal
+               only, so any main-site page with shorter content, or shorter on a device with a
+               taller effective viewport than tested, hits the same bug). #main-container is
+               "display:flex; flex-direction:column; min-height:100vh" and its child .site-main
+               has "flex-grow:1", so on any page shorter than one screen .site-main stretches to
+               fill the leftover space and drags the footer down with it, leaving dead space
+               between the real content and the copyright. Confirmed via real computed layout
+               (logged into dashboard/portal-referrals) that both layers need overriding —
+               .site-main's flex-grow stops IT stretching, but #main-container's OWN
+               min-height:100vh still leaves blank space on its own afterward. */
+            .site-main {
+                flex-grow: 0 !important;
+            }
+            #main-container {
+                min-height: 0 !important;
+            }
             <?php if ($is_portal): ?>
             body { margin: 0; padding: 0; font-family: 'Inter', -apple-system, sans-serif; }
 
@@ -754,24 +771,6 @@ add_action('template_redirect', function() {
                    top of that just added dead scroll space past the real content on shorter
                    portal pages, pushing the copyright footer down below the visible "end" of the
                    page instead of it being the actual end. */
-            }
-            /* The real source of the gap (found by actually logging in and measuring
-               dashboard/portal-referrals, not just the anonymous-only pages checked previously):
-               Blocksy's theme-wide sticky-footer pattern. #main-container is
-               "display:flex; flex-direction:column; min-height:100vh" and .site-main has
-               "flex-grow:1" so it stretches to fill the viewport, pushing the footer to the
-               bottom, on ANY page whose content is shorter than one screen. It never showed on
-               portal-login/contact because their form content already exceeds one viewport;
-               dashboard/referrals content is shorter, so the stretch became visible empty space.
-               Both layers need overriding: .site-main's flex-grow stops IT from stretching, but
-               #main-container's OWN min-height:100vh still leaves blank space after its children
-               (confirmed via computed layout: #main-container measured a flat 812px — exactly one
-               viewport — even after .site-main stopped growing). */
-            .site-main {
-                flex-grow: 0 !important;
-            }
-            #main-container {
-                min-height: 0 !important;
             }
             #portal-root {
                 background: #f1f5f9;
@@ -1110,7 +1109,19 @@ add_action('template_redirect', function() {
                 padding-bottom: 0;
                 box-sizing: border-box;
             }
-            
+            /* The React app's OWN bundled stylesheet (portal/dist/portal.css) carries the exact
+               same forced-height anti-pattern independently of the theme-level rules above:
+               .portal-app { min-height: calc(100vh - 70px); }. It didn't show up in testing
+               because current content (5 referrals, 4 dashboard cards) already exceeds that
+               floor, but with less content (fewer referrals, a page some devices render with a
+               taller effective viewport) it becomes the active cause of the same dead space.
+               Overriding here rather than editing/rebuilding the React bundle. */
+            .portal-app,
+            .portal-login-page,
+            .portal-register-page {
+                min-height: 0 !important;
+            }
+
             /* Loading state */
             .portal-init-loading {
                 display: flex;
