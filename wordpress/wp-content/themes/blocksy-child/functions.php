@@ -782,6 +782,12 @@ add_action('template_redirect', function() {
                 top: 0;
                 z-index: 9999;
                 box-shadow: 0 4px 20px rgba(10, 61, 98, 0.4);
+                /* iOS Safari auto-inflates small text ("text size adjust") once it decides a tiny
+                   font in a narrow column is too small to read, silently rendering larger than the
+                   CSS says — the likely cause of pills still wrapping to multiple lines despite an
+                   explicit tiny font-size. Disable it so our sizes apply exactly as specified. */
+                -webkit-text-size-adjust: 100%;
+                text-size-adjust: 100%;
             }
             .portal-header-inner {
                 max-width: 1400px;
@@ -1055,14 +1061,16 @@ add_action('template_redirect', function() {
                     flex: 1 1 0;
                     min-width: 0;
                     text-align: center;
-                    padding: 6px 2px;
+                    padding: 5px 2px;
                     /* The generic .portal-nav a rule forces white-space: nowrap; with each pill
                        squeezed to 1/6th of the row, "Our Services" (nowrap) rendered wider than
                        its own box and visually painted over "About Us" next to it. Letting text
-                       wrap inside each pill keeps it within its own box — no more overlap. */
+                       wrap inside each pill keeps it within its own box — no more overlap. Smaller
+                       (7.5px, down from 8.5px) so each label fits on one line in the common case
+                       instead of relying on that wrap fallback. */
                     white-space: normal !important;
                     word-break: break-word;
-                    font-size: 8.5px;
+                    font-size: 7.5px;
                     line-height: 1.15;
                     letter-spacing: 0.01em;
                 }
@@ -1179,6 +1187,8 @@ add_action('template_redirect', function() {
                 margin-right: calc(50% - 50vw) !important;
                 padding: 10px 24px !important;
                 background: linear-gradient(135deg, #0A3D62 0%, #1a5a8a 50%, #2980b9 100%) !important;
+                -webkit-text-size-adjust: 100%;
+                text-size-adjust: 100%;
             }
             .elementor-element-225e9252 > .elementor-widget-wrap,
             .elementor-element-7ee5b06d > .elementor-widget-wrap,
@@ -1189,6 +1199,24 @@ add_action('template_redirect', function() {
                 align-items: center;
                 justify-content: center;
                 gap: 16px;
+                width: 100%;
+            }
+            /* Explicit full-width + text/content alignment on the heading and button-group
+               themselves (rather than relying only on the parent's align-items to shrink-and-
+               center each flex item) so both rows are reliably centered as one block, not just
+               positioned by their own natural content width. */
+            .elementor-element-20ab6947, .elementor-element-c3bc36e, .elementor-element-69fcc976 {
+                text-align: center;
+            }
+            .elementor-element-20ab6947 .elementor-heading-title,
+            .elementor-element-c3bc36e .elementor-heading-title,
+            .elementor-element-69fcc976 .elementor-heading-title {
+                text-align: center;
+                width: 100%;
+            }
+            .elementor-element-1f005b0f, .elementor-element-2652459e, .elementor-element-15774cf {
+                justify-content: center;
+                width: 100%;
             }
             .elementor-element-20ab6947,
             .elementor-element-c3bc36e,
@@ -1243,10 +1271,7 @@ add_action('template_redirect', function() {
                 #cta-section,
                 .elementor-element-4be0b6f,
                 .elementor-element-5f56ce99 {
-                    /* Same explicit min-height as .portal-header--main-site .portal-header-inner
-                       above — an exact shared number instead of trying to independently tune each
-                       bar's padding to happen to add up to the same total. */
-                    min-height: 70px !important;
+                    min-height: 52px !important;
                     padding: 6px 12px !important;
                     display: flex !important;
                     flex-direction: column !important;
