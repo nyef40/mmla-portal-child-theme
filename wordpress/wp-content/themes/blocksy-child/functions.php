@@ -774,8 +774,12 @@ add_action('template_redirect', function() {
                size. The only way to see blank space at a resting scroll position is Safari
                allowing scroll PAST that true boundary — exactly what the elastic bounce does.
                overscroll-behavior-y disables that for the whole page (Safari 16.4+, 2023) rather
-               than just cosmetically recoloring what it reveals. */
-            html {
+               than just cosmetically recoloring what it reveals.
+               Fixed on mobile Safari but not mobile Chrome: which element is actually treated as
+               the page's "root scroller" differs by browser/engine, so the property needs to be
+               set on both html AND body (a documented cross-browser quirk, not engine-specific to
+               either) to reliably catch whichever one each browser is actually using. */
+            html, body {
                 overscroll-behavior-y: none;
             }
             /* Blocksy's theme-wide sticky-footer pattern, applied on EVERY page this code
