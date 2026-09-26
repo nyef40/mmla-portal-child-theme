@@ -1033,15 +1033,24 @@ add_action('template_redirect', function() {
                     justify-content: flex-end;
                     margin-left: 0;
                 }
+                /* nowrap + equal-share items (not flex:0 0 auto) guarantees exactly one row:
+                   each of the 6 items is compressed to a fixed 1/6th of the width instead of
+                   wrapping onto a second internal line when the natural text widths don't fit —
+                   the same technique the portal's own 5-item mobile nav already uses successfully. */
                 .portal-header--main-site .portal-nav {
                     width: 100% !important;
-                    flex-wrap: wrap !important;
-                    justify-content: flex-end;
+                    flex-wrap: nowrap !important;
+                    justify-content: space-between;
+                    gap: 2px;
                 }
                 .portal-header--main-site .portal-nav a {
-                    flex: 0 0 auto;
-                    font-size: 10px;
-                    padding: 6px 9px;
+                    flex: 1 1 0;
+                    min-width: 0;
+                    text-align: center;
+                    padding: 6px 2px;
+                    font-size: 8.5px;
+                    line-height: 1.15;
+                    letter-spacing: 0.01em;
                 }
             }
             
@@ -1222,20 +1231,44 @@ add_action('template_redirect', function() {
                 .elementor-element-5f56ce99 {
                     padding: 8px 12px !important;
                 }
-                /* !important: the base rule above sets flex-wrap: nowrap with equal specificity
-                   and no media query, so being later in source it otherwise wins even here,
-                   forcing the heading + both buttons onto one row that overflows off-screen on
-                   narrow phones ("both buttons are not seen, do not fit"). */
+                /* Exactly 2 rows on mobile: label above, both buttons together below — not the
+                   3-line result of letting 3 independently-ordered flex items (button/heading/
+                   button) each wrap onto their own line. Stack heading + button-group vertically... */
                 .elementor-element-225e9252 > .elementor-widget-wrap,
                 .elementor-element-7ee5b06d > .elementor-widget-wrap,
                 .elementor-element-65b5b6a > .elementor-widget-wrap {
-                    flex-wrap: wrap !important;
-                    gap: 6px 8px;
+                    flex-direction: column !important;
+                    flex-wrap: nowrap !important;
+                    gap: 4px !important;
+                }
+                /* ...then undo display:contents so the button-group is one box again (both
+                   buttons rendered together, side by side, as that single second row). */
+                .elementor-element-1f005b0f,
+                .elementor-element-2652459e,
+                .elementor-element-15774cf {
+                    display: flex !important;
+                    flex-direction: row !important;
+                    justify-content: center;
+                    gap: 6px !important;
+                    order: 2 !important;
+                }
+                .elementor-element-1f005b0f > .e-con-inner,
+                .elementor-element-2652459e > .e-con-inner,
+                .elementor-element-15774cf > .e-con-inner {
+                    display: flex !important;
+                    flex-direction: row !important;
+                    gap: 6px !important;
+                }
+                .elementor-element-20ab6947,
+                .elementor-element-c3bc36e,
+                .elementor-element-69fcc976 {
+                    order: 1 !important;
                 }
                 .elementor-element-20ab6947 .elementor-heading-title,
                 .elementor-element-c3bc36e .elementor-heading-title,
                 .elementor-element-69fcc976 .elementor-heading-title {
-                    font-size: 10px !important;
+                    font-size: 11px !important;
+                    white-space: normal;
                 }
                 .elementor-element-457c9cb9 .elementor-button, .elementor-element-3265939 .elementor-button, .elementor-element-4c11a21e .elementor-button,
                 .elementor-element-6188f1c9 .elementor-button, .elementor-element-646ce5dc .elementor-button, .elementor-element-763a421c .elementor-button {
@@ -1348,12 +1381,10 @@ add_action('template_redirect', function() {
                             <a href="<?php echo esc_url(home_url('/')); ?>" class="back-to-site">Main Site</a>
                         <?php else: ?>
                             <nav class="portal-nav">
-                                <?php if ($is_logged_in): ?>
-                                    <a href="<?php echo esc_url(home_url('/dashboard/')); ?>" class="<?php echo $current === 'dashboard' ? 'active' : ''; ?>">Provider Dashboard</a>
-                                <?php endif; ?>
-                                <?php // "Provider Login" removed: /portal/ (the "Portal" link below) already
-                                // redirects anonymous visitors straight to /portal-login/, so the two
-                                // items led to the exact same place. ?>
+                                <?php // "Provider Login" and "Provider Dashboard" removed: /portal/ (the
+                                // "Portal" link below) redirects both anonymous and logged-in visitors
+                                // to the same destination those items pointed to, so they were exact
+                                // duplicates of "Portal" for every visitor state. ?>
                                 <a href="<?php echo esc_url(home_url('/')); ?>" class="<?php echo is_front_page() ? 'active' : ''; ?>">Home</a>
                                 <a href="<?php echo esc_url(home_url('/our-services/')); ?>" class="<?php echo $current === 'our-services' ? 'active' : ''; ?>">Our Services</a>
                                 <a href="<?php echo esc_url(home_url('/about-us/')); ?>" class="<?php echo $current === 'about-us' ? 'active' : ''; ?>">About Us</a>
