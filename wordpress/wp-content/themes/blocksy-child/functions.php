@@ -1668,6 +1668,169 @@ add_action('template_redirect', function() {
         </script>
         <?php
     }, 999);
+
+    // ============================================
+    // Content restructuring: Home / Our Services / About Us
+    // Duplicated/generic sections (Home's "About" + service + research blurbs,
+    // About Us's abstract Mission/Vision) are hidden via CSS and replaced with
+    // concrete content via JS DOM insertion — chosen over editing Elementor's
+    // own _elementor_data JSON, which can't be safely verified without the
+    // visual editor. Section element IDs come from mapping each page's live
+    // HTML; see git history for how they were identified.
+    // ============================================
+    add_action('wp_head', function() use ($is_main_bar) {
+        if (!$is_main_bar) return;
+        ?>
+        <style>
+        <?php if (is_front_page()): ?>
+            /* Home: "About Mobile Medical LA" (moved to About Us), the IVIG/services
+               blurb, and the clinical-research blurb — replaced below by a bridge
+               paragraph + 4-card teaser grid pointing to the pages that now own
+               this content. */
+            .elementor-element-36f116ff,
+            .elementor-element-13c2ea82,
+            .elementor-element-7295234 { display: none !important; }
+        <?php endif; ?>
+        <?php if (is_page('about-us')): ?>
+            /* About Us: generic "Our Mission" / "Our Vision" copy — replaced below
+               by a concrete "What Sets Us Apart" section. */
+            .elementor-element-1f6f89c9,
+            .elementor-element-2344573a { display: none !important; }
+        <?php endif; ?>
+
+        .mmla-content-block { max-width: 1140px; margin: 0 auto; padding: 60px 24px; }
+        .mmla-content-block p.mmla-lead { font-size: 1.05rem; line-height: 1.7; color: #384049; max-width: 780px; margin: 0 auto 40px; text-align: center; }
+        .mmla-teaser-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+        .mmla-teaser-grid a.mmla-teaser-card { display: block; background: #fff; border: 1px solid #E3E7ED; border-radius: 12px; padding: 28px 22px; text-decoration: none; color: inherit; transition: box-shadow .2s, transform .2s; }
+        .mmla-teaser-grid a.mmla-teaser-card:hover { box-shadow: 0 8px 24px rgba(10,61,98,0.12); transform: translateY(-2px); }
+        .mmla-teaser-card h3 { font-size: 1.1rem; margin: 0 0 10px; color: #0A3D62; }
+        .mmla-teaser-card p { font-size: .92rem; line-height: 1.5; color: #5B6570; margin: 0; }
+        .mmla-teaser-grid a.mmla-teaser-card.mmla-teaser-highlight { background: linear-gradient(135deg,#0A3D62 0%,#1a5a8a 60%,#2980b9 100%); border-color: transparent; }
+        .mmla-teaser-grid a.mmla-teaser-card.mmla-teaser-highlight h3, .mmla-teaser-grid a.mmla-teaser-card.mmla-teaser-highlight p { color: #fff; }
+
+        .mmla-apart-block { background: #F5F6FA; padding: 60px 24px; }
+        .mmla-apart-inner { max-width: 900px; margin: 0 auto; }
+        .mmla-apart-inner h2 { text-align: center; color: #0A3D62; font-size: 1.75rem; margin: 0 0 36px; }
+        .mmla-apart-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px; }
+        .mmla-apart-item h3 { font-size: 1.05rem; color: #0A3D62; margin: 0 0 8px; }
+        .mmla-apart-item p { font-size: .95rem; line-height: 1.6; color: #384049; margin: 0; }
+        .mmla-apart-item a { color: #1a5a8a; font-weight: 600; }
+
+        .mmla-about-intro { background: #fff; padding: 56px 24px 40px; }
+        .mmla-about-intro-inner { max-width: 820px; margin: 0 auto; }
+        .mmla-about-intro-inner p { font-size: 1rem; line-height: 1.75; color: #384049; margin: 0 0 18px; }
+
+        .mmla-coord-block { background: #fff; padding: 60px 24px; text-align: center; }
+        .mmla-coord-block h2 { color: #0A3D62; font-size: 1.75rem; margin: 0 0 16px; }
+        .mmla-coord-block p { max-width: 700px; margin: 0 auto 28px; color: #384049; font-size: 1rem; line-height: 1.7; }
+        .mmla-coord-block a.mmla-coord-cta { display: inline-block; background: #0A3D62; color: #fff; padding: 14px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; }
+        .mmla-coord-block a.mmla-coord-cta:hover { background: #1a5a8a; }
+
+        @media (max-width: 780px) {
+            .mmla-teaser-grid, .mmla-apart-list { grid-template-columns: 1fr; }
+        }
+        </style>
+        <?php
+    }, 1000);
+
+    add_action('wp_footer', function() use ($is_main_bar) {
+        if (!$is_main_bar) return;
+
+        $home_teaser_html = <<<'HTML'
+<div class="mmla-content-block">
+  <p class="mmla-lead">Mobile Medical LA brings hospital-level infusion nursing, skilled home health, and full clinical-trial support directly to patients across Southern California &mdash; every visit coordinated in real time through our own clinical records system.</p>
+  <div class="mmla-teaser-grid">
+    <a class="mmla-teaser-card" href="https://mobilemedicalla.com/our-services/">
+      <h3>Home Health</h3>
+      <p>Skilled nursing and therapy delivered in the comfort of home.</p>
+    </a>
+    <a class="mmla-teaser-card" href="https://mobilemedicalla.com/our-services/#hit">
+      <h3>HIT &amp; Infusion Therapy</h3>
+      <p>Complex infusions and biologics, safely administered where patients live.</p>
+    </a>
+    <a class="mmla-teaser-card" href="https://mobilemedicalla.com/our-services/#trials">
+      <h3>Clinical Trials</h3>
+      <p>Homecare support for patients enrolled in clinical research studies.</p>
+    </a>
+    <a class="mmla-teaser-card mmla-teaser-highlight" href="https://mobilemedicalla.com/our-technology/">
+      <h3>How We Manage Your Care</h3>
+      <p>See how every visit, order, and record is tracked in one system.</p>
+    </a>
+  </div>
+</div>
+HTML;
+
+        $about_intro_html = <<<'HTML'
+<div class="mmla-about-intro">
+  <div class="mmla-about-intro-inner">
+    <p>Founded in 2017 in the heart of Los Angeles, Mobile Medical LA is a vision of expert home health nurses who saw the growing need for in-home care tailored to patients with complex neurological, immunological, and oncological conditions. They understood that patients deserved more than basic home health visits&mdash;they deserved skilled care delivered with compassion and consistency.</p>
+    <p>The name &ldquo;Mobile Medical LA&rdquo; reflects the company's mission: bringing high-quality clinical care to the patient, wherever they are. Over time we expanded our services across Southern California, specializing in managing long-term home infusions and supporting patients participating in clinical research.</p>
+    <p>We are proud to be both home health certified and home infusion treatment (HIT) certified &mdash; a distinction that sets us apart in the industry. Being home health certified means we meet stringent state and federal standards for providing skilled nursing and therapeutic services in the home setting. Our HIT certification confirms that we are qualified to safely administer complex medications, including biologics and immunoglobulins, with protocols that ensure patient safety and optimal outcomes.</p>
+  </div>
+</div>
+HTML;
+
+        $apart_html = <<<'HTML'
+<div class="mmla-apart-block">
+  <div class="mmla-apart-inner">
+    <h2>What Sets Us Apart</h2>
+    <div class="mmla-apart-list">
+      <div class="mmla-apart-item">
+        <h3>Dual Certified</h3>
+        <p>Home Health Certified and Home Infusion Therapy (HIT) Certified &mdash; a distinction not every home care provider holds.</p>
+      </div>
+      <div class="mmla-apart-item">
+        <h3>Clinical Trial Experience</h3>
+        <p>Years of coordinating homecare nursing for patients enrolled in clinical research studies.</p>
+      </div>
+      <div class="mmla-apart-item">
+        <h3>Real-Time Clinical Records</h3>
+        <p>Every visit, order, and note is tracked in our own EMR system. <a href="https://mobilemedicalla.com/our-technology/">See how it works &rarr;</a></p>
+      </div>
+      <div class="mmla-apart-item">
+        <h3>Southern California Coverage</h3>
+        <p>Serving patients at home across the region, on their schedule.</p>
+      </div>
+    </div>
+  </div>
+</div>
+HTML;
+
+        $coord_html = <<<'HTML'
+<div class="mmla-coord-block">
+  <h2>How We Keep It All Coordinated</h2>
+  <p>Behind every home visit is a clinical records system that keeps your care team, your physician, and your case manager on the same page &mdash; in real time.</p>
+  <a class="mmla-coord-cta" href="https://mobilemedicalla.com/our-technology/">See How We Manage Your Care</a>
+</div>
+HTML;
+        ?>
+        <script>
+        (function () {
+            function insertAfter(selector, html) {
+                var el = document.querySelector(selector);
+                if (el) el.insertAdjacentHTML('afterend', html);
+            }
+            function insertBefore(selector, html) {
+                var el = document.querySelector(selector);
+                if (el) el.insertAdjacentHTML('beforebegin', html);
+            }
+
+            <?php if (is_front_page()): ?>
+            insertBefore('.elementor-element-290de5fe', <?php echo wp_json_encode($home_teaser_html); ?>);
+            <?php endif; ?>
+
+            <?php if (is_page('about-us')): ?>
+            insertAfter('.elementor-element-6d9c4e76', <?php echo wp_json_encode($about_intro_html); ?>);
+            insertBefore('.elementor-element-1f6f89c9', <?php echo wp_json_encode($apart_html); ?>);
+            <?php endif; ?>
+
+            <?php if (is_page('our-services')): ?>
+            insertBefore('.elementor-element-4be0b6f', <?php echo wp_json_encode($coord_html); ?>);
+            <?php endif; ?>
+        })();
+        </script>
+        <?php
+    }, 1000);
 });
 
 // ============================================
