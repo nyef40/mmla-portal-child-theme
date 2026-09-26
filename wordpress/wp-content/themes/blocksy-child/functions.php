@@ -1135,9 +1135,9 @@ add_action('template_redirect', function() {
             <?php endif; ?>
             <?php if ($is_main_bar): ?>
             /* Blue "Call to Action" bar (home, our-services, about-us): force it edge-to-edge
-               regardless of which ancestor is constraining it (differs per page template), and
-               shrink it toward the unified bar's height by removing most of its padding and
-               laying the heading + the two buttons out in one row instead of stacked. */
+               regardless of which ancestor is constraining it (differs per page template), match
+               the unified top bar's exact gradient, and match its exact height by shrinking the
+               heading/buttons enough to fit heading + both buttons on one never-wrapping row. */
             #cta-section,
             .elementor-element-4be0b6f,
             .elementor-element-5f56ce99 {
@@ -1145,24 +1145,82 @@ add_action('template_redirect', function() {
                 max-width: 100vw !important;
                 margin-left: calc(50% - 50vw) !important;
                 margin-right: calc(50% - 50vw) !important;
-                padding: 14px 24px !important;
+                padding: 10px 24px !important;
+                background: linear-gradient(135deg, #0A3D62 0%, #1a5a8a 50%, #2980b9 100%) !important;
             }
             .elementor-element-225e9252 > .elementor-widget-wrap,
             .elementor-element-7ee5b06d > .elementor-widget-wrap,
             .elementor-element-65b5b6a > .elementor-widget-wrap {
                 display: flex !important;
                 flex-direction: row;
-                flex-wrap: wrap;
+                flex-wrap: nowrap;
                 align-items: center;
                 justify-content: center;
-                gap: 10px 20px;
+                gap: 16px;
+            }
+            .elementor-element-20ab6947 .elementor-heading-title,
+            .elementor-element-c3bc36e .elementor-heading-title,
+            .elementor-element-69fcc976 .elementor-heading-title {
+                font-size: 16px !important;
+                white-space: nowrap;
             }
             .elementor-element-1f005b0f,
             .elementor-element-2652459e,
             .elementor-element-15774cf {
                 display: flex !important;
                 flex-direction: row !important;
+                flex-wrap: nowrap !important;
                 gap: 10px !important;
+            }
+            .elementor-element-1f005b0f .elementor-button,
+            .elementor-element-2652459e .elementor-button,
+            .elementor-element-15774cf .elementor-button {
+                padding: 8px 14px !important;
+                font-size: 13px !important;
+                white-space: nowrap;
+            }
+            @media (max-width: 640px) {
+                #cta-section,
+                .elementor-element-4be0b6f,
+                .elementor-element-5f56ce99 {
+                    padding: 8px 12px !important;
+                }
+                .elementor-element-225e9252 > .elementor-widget-wrap,
+                .elementor-element-7ee5b06d > .elementor-widget-wrap,
+                .elementor-element-65b5b6a > .elementor-widget-wrap {
+                    gap: 6px 8px;
+                }
+                .elementor-element-20ab6947 .elementor-heading-title,
+                .elementor-element-c3bc36e .elementor-heading-title,
+                .elementor-element-69fcc976 .elementor-heading-title {
+                    font-size: 10px !important;
+                }
+                .elementor-element-1f005b0f .elementor-button,
+                .elementor-element-2652459e .elementor-button,
+                .elementor-element-15774cf .elementor-button {
+                    padding: 5px 7px !important;
+                    font-size: 8px !important;
+                }
+            }
+
+            /* Bottom bar above the footer on /resources2/ ("More Resources? Click here:" +
+               the CMS.gov button): match the unified top bar's exact gradient background, and
+               give the button the exact pill highlight color the top bar's own menu items use
+               on hover/active, as its standing look. */
+            .elementor-element-127a7fa1 {
+                background: linear-gradient(135deg, #0A3D62 0%, #1a5a8a 50%, #2980b9 100%) !important;
+            }
+            .elementor-element-1c41214a .elementor-button {
+                background: rgba(255, 255, 255, 0.2) !important;
+                color: #ffffff !important;
+                padding: 9px 14px !important;
+                border-radius: 25px !important;
+            }
+            .elementor-element-1c41214a .elementor-button:hover,
+            .elementor-element-1c41214a .elementor-button:focus,
+            .elementor-element-1c41214a .elementor-button:active {
+                background: rgba(255, 255, 255, 0.2) !important;
+                color: #ffffff !important;
             }
             <?php endif; ?>
             <?php if ($is_main_bar && is_front_page()): ?>
