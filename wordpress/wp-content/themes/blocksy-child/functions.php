@@ -1633,6 +1633,41 @@ add_action('template_redirect', function() {
         <?php endif; ?>
         <?php
     }, 1);
+
+    // overscroll-behavior fixed the "dead space below copyright" bounce on mobile Safari, but
+    // not on Chrome for iOS: even though Chrome for iOS runs on Apple's WebKit like Safari does,
+    // it wraps that WebView in its own native scroll handling and has a documented history of
+    // not fully honoring page-level overscroll-behavior the way Safari does — the bounce can be
+    // happening one layer above what page CSS can reach. This is the technique browsers used to
+    // suppress bounce before overscroll-behavior existed: intercept the touch gesture itself at
+    // the scroll boundaries (top/bottom) and prevent it from starting a bounce, rather than
+    // asking the browser to respect a CSS property it may not fully honor. Works at the touch
+    // event level, below any given browser's own overscroll-behavior support.
+    add_action('wp_footer', function() {
+        ?>
+        <script>
+        (function () {
+            var startY = 0;
+            document.addEventListener('touchstart', function (e) {
+                startY = e.touches[0].pageY;
+            }, { passive: true });
+            document.addEventListener('touchmove', function (e) {
+                var scrollY = window.scrollY || document.documentElement.scrollTop;
+                var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+                var deltaY = e.touches[0].pageY - startY;
+                // At the top, swiping further down (deltaY > 0) would start a bounce.
+                if (scrollY <= 0 && deltaY > 0) {
+                    e.preventDefault();
+                }
+                // At the bottom, swiping further up (deltaY < 0) would start a bounce.
+                if (scrollY >= maxScroll && deltaY < 0) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
+        })();
+        </script>
+        <?php
+    }, 999);
 });
 
 // ============================================
