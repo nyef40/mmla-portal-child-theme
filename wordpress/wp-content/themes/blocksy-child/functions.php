@@ -1201,6 +1201,9 @@ add_action('template_redirect', function() {
                 padding: 8px 14px !important;
                 font-size: 13px !important;
                 white-space: nowrap;
+                /* Shield from the general secondary-button treatment below: these already sit
+                   directly on the bar's own gradient and don't need their own background chip. */
+                background: transparent !important;
             }
             @media (max-width: 640px) {
                 #cta-section,
@@ -1227,15 +1230,25 @@ add_action('template_redirect', function() {
 
             /* Secondary informational buttons/toggles across the main-site pages (e.g. "ACHC
                certified for HIT", "ACHC Accreditation", "Schedule Appointment", "More Information")
-               all use Elementor's "Link" button style or the toggle-accordion widget — get the
-               exact top-bar hover/active pill color on hover/focus/click, matching request, without
-               changing their resting look. Padding/radius is reserved up front so hovering doesn't
-               shift text. */
+               all use Elementor's "Link" button style or the toggle-accordion widget, which have no
+               background of their own — many sit on near-white sections, so the top bar's hover
+               color (a translucent white) would be almost invisible applied on its own. To
+               genuinely match "the same as the top bar", they get the bar's own gradient as their
+               resting background (like sitting on the bar itself), then on hover/focus/click an
+               inset box-shadow overlays the exact same translucent white the bar's own menu items
+               show on hover — layered on top rather than replacing the gradient, so text stays
+               legible. (CTA/CMS.gov buttons are excluded — they already sit on that gradient bar
+               directly and are shielded via their own background:transparent rule above.) */
             .elementor-button-link,
             .elementor-tab-title {
-                padding: 4px 10px;
-                border-radius: 8px;
-                transition: background 0.2s ease;
+                background: linear-gradient(135deg, #0A3D62 0%, #1a5a8a 50%, #2980b9 100%) !important;
+                color: #ffffff !important;
+                padding: 9px 14px;
+                border-radius: 25px;
+                transition: box-shadow 0.2s ease;
+            }
+            .elementor-toggle-title {
+                color: #ffffff !important;
             }
             .elementor-button-link:hover,
             .elementor-button-link:focus,
@@ -1243,7 +1256,7 @@ add_action('template_redirect', function() {
             .elementor-tab-title:hover,
             .elementor-tab-title:focus,
             .elementor-tab-title[aria-expanded="true"] {
-                background: rgba(255, 255, 255, 0.2) !important;
+                box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.2) !important;
             }
 
             /* Bottom bar above the footer on /resources2/ ("More Resources? Click here:" +
@@ -1321,9 +1334,10 @@ add_action('template_redirect', function() {
                             <nav class="portal-nav">
                                 <?php if ($is_logged_in): ?>
                                     <a href="<?php echo esc_url(home_url('/dashboard/')); ?>" class="<?php echo $current === 'dashboard' ? 'active' : ''; ?>">Provider Dashboard</a>
-                                <?php else: ?>
-                                    <a href="<?php echo esc_url(home_url('/portal-login/')); ?>" class="<?php echo $current === 'portal-login' ? 'active' : ''; ?>">Provider Login</a>
                                 <?php endif; ?>
+                                <?php // "Provider Login" removed: /portal/ (the "Portal" link below) already
+                                // redirects anonymous visitors straight to /portal-login/, so the two
+                                // items led to the exact same place. ?>
                                 <a href="<?php echo esc_url(home_url('/')); ?>" class="<?php echo is_front_page() ? 'active' : ''; ?>">Home</a>
                                 <a href="<?php echo esc_url(home_url('/our-services/')); ?>" class="<?php echo $current === 'our-services' ? 'active' : ''; ?>">Our Services</a>
                                 <a href="<?php echo esc_url(home_url('/about-us/')); ?>" class="<?php echo $current === 'about-us' ? 'active' : ''; ?>">About Us</a>
