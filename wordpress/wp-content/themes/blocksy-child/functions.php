@@ -1047,28 +1047,25 @@ add_action('template_redirect', function() {
                     justify-content: flex-end;
                     margin-left: 0;
                 }
-                /* Equal-share sizing (flex: 1 1 0) forced every pill to the SAME width regardless
-                   of label length, so "Our Services" (12 chars) got squeezed into the same box as
-                   "Home" (4 chars) and had to wrap internally — up to 3 lines for the longest
-                   labels. Content-based sizing (flex: 0 0 auto) instead gives each pill only the
-                   width its own label needs; the 6 labels combined need roughly 300px at this
-                   font-size, comfortably under a phone's ~350px+ available width, so forcing
-                   nowrap (no internal wrap, no row-wrap) now reliably keeps every label on its
-                   own single line with all 6 fitting on the one row. */
+                /* Content-based sizing (flex: 0 0 auto, previous commit) fixed each label
+                   rendering on its own single line, but the 6 labels combined still didn't fit
+                   the row at 8.5px — "Resources" got cut off and "Portal" pushed off-screen
+                   entirely. Cut font/padding/gap further, with a large safety margin this time,
+                   so the total width reliably clears even the narrowest phones. */
                 .portal-header--main-site .portal-nav {
                     width: 100% !important;
                     flex-wrap: nowrap !important;
                     justify-content: space-between;
-                    gap: 3px;
+                    gap: 1px;
                 }
                 .portal-header--main-site .portal-nav a {
                     flex: 0 0 auto;
                     text-align: center;
-                    padding: 5px 4px;
+                    padding: 4px 2px;
                     white-space: nowrap !important;
-                    font-size: 8.5px;
-                    line-height: 1.15;
-                    letter-spacing: 0.01em;
+                    font-size: 7px;
+                    line-height: 1.1;
+                    letter-spacing: 0;
                 }
             }
             
@@ -1272,9 +1269,9 @@ add_action('template_redirect', function() {
                 #cta-section,
                 .elementor-element-4be0b6f,
                 .elementor-element-5f56ce99 {
-                    /* Buttons are fine as-is — the shorter height comes from tighter padding
-                       and row gap, not from shrinking them further. */
-                    min-height: 44px !important;
+                    /* Matches the top bar's own current mobile height: 13px header-inner padding
+                       + 28px brand-icon row + 4px gap + ~16px shrunk-nav row ≈ 61px. */
+                    min-height: 61px !important;
                     padding: 4px 12px !important;
                     display: flex !important;
                     flex-direction: column !important;
@@ -1317,9 +1314,9 @@ add_action('template_redirect', function() {
                 .elementor-element-20ab6947 .elementor-heading-title,
                 .elementor-element-c3bc36e .elementor-heading-title,
                 .elementor-element-69fcc976 .elementor-heading-title {
-                    /* Small enough to fit the full 31-character label on one line even on the
-                       narrowest phones (nowrap guarantees it never wraps or grows the bar). */
-                    font-size: 7px !important;
+                    /* 7px still didn't clear the narrowest phones; cut further with a wide
+                       margin (nowrap guarantees it never wraps or grows the bar regardless). */
+                    font-size: 6px !important;
                     white-space: nowrap !important;
                 }
                 /* Buttons made larger and more legible now that the label above takes up less
