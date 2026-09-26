@@ -1,0 +1,16 @@
+# Static single-page site — no PHP/WordPress rewrite needed.
+Options -Indexes
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.(js|css)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "\.html$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
+
+# Protect .htaccess
+<Files .htaccess>
+  Require all denied
+</Files>
