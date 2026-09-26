@@ -398,6 +398,15 @@ add_action('phpmailer_init', function ($phpmailer) {
     }
 }, 5, 1);
 
+// Footer copyright: replace Blocksy's default "WordPress Theme by {theme_author}" (which
+// resolved to the child theme's declared Author, "MMLA", in style.css) with the site's own
+// copyright plus a developer credit. Using the documented filter rather than a Customizer
+// value, since no Customizer value was ever saved for this — Blocksy was falling back to its
+// built-in default the whole time.
+add_filter('blocksy:footer:copyright:value', function () {
+    return 'Copyright &copy; {current_year} Mobile Medical LA. Site by nyef40';
+});
+
 // Disable comments and pingbacks sitewide (spam reduction; complements Settings → Discussion).
 add_filter('comments_open', '__return_false', 20, 2);
 add_filter('pings_open', '__return_false', 20, 2);
@@ -1338,10 +1347,10 @@ add_action('template_redirect', function() {
                 #cta-section,
                 .elementor-element-4be0b6f,
                 .elementor-element-5f56ce99 {
-                    /* Verified via real computed layout (not estimated): once the hidden button-
-                       wrapper padding below is zeroed, natural content height is ~51px. */
-                    min-height: 50px !important;
-                    padding: 4px 12px !important;
+                    /* Sized back up per request — the previous compact version (50px, 15px
+                       heading, 11px buttons) read as too small. */
+                    min-height: 85px !important;
+                    padding: 10px 16px !important;
                     display: flex !important;
                     flex-direction: column !important;
                     align-items: center !important;
@@ -1355,7 +1364,7 @@ add_action('template_redirect', function() {
                 .elementor-element-65b5b6a > .elementor-widget-wrap {
                     flex-direction: column !important;
                     flex-wrap: nowrap !important;
-                    gap: 3px !important;
+                    gap: 6px !important;
                 }
                 /* ...then undo display:contents so the button-group is one box again (both
                    buttons rendered together, side by side, as that single second row). */
@@ -1365,7 +1374,7 @@ add_action('template_redirect', function() {
                     display: flex !important;
                     flex-direction: row !important;
                     justify-content: center !important;
-                    gap: 6px !important;
+                    gap: 10px !important;
                     order: 2 !important;
                     padding: 0 !important;
                 }
@@ -1378,7 +1387,7 @@ add_action('template_redirect', function() {
                        actually spanning the full 330px and left-packing the buttons inside
                        itself; centering only the outer box had nothing left to center. */
                     justify-content: center !important;
-                    gap: 6px !important;
+                    gap: 10px !important;
                     padding: 0 !important;
                 }
                 /* The real source of most of the bar's height: each button WIDGET WRAPPER
@@ -1402,16 +1411,14 @@ add_action('template_redirect', function() {
                 #main-container .elementor-element-20ab6947 .elementor-heading-title,
                 #main-container .elementor-element-c3bc36e .elementor-heading-title,
                 #main-container .elementor-element-69fcc976 .elementor-heading-title {
-                    /* 10px had a lot of spare room in its 330px-wide centered box; sized up. */
-                    font-size: 15px !important;
+                    /* Sized up further per request — 15px still read as small. */
+                    font-size: 20px !important;
                     white-space: nowrap !important;
                 }
-                /* Buttons made larger and more legible now that the label above takes up less
-                   room — this is the actual call to action, it should read easily. */
                 .elementor-element-457c9cb9 .elementor-button, .elementor-element-3265939 .elementor-button, .elementor-element-4c11a21e .elementor-button,
                 .elementor-element-6188f1c9 .elementor-button, .elementor-element-646ce5dc .elementor-button, .elementor-element-763a421c .elementor-button {
-                    padding: 7px 12px !important;
-                    font-size: 11px !important;
+                    padding: 10px 18px !important;
+                    font-size: 15px !important;
                 }
             }
 
