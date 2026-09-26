@@ -762,6 +762,22 @@ add_action('template_redirect', function() {
                own light-grey tone means that revealed sliver is invisible instead of reading as a
                broken gap, regardless of the exact browser mechanism exposing it. */
             html, body { background-color: #F5F6FA; }
+            /* Your follow-up screenshots showed the gap is now correctly colored (proof the fix
+               above works) but still THERE — a solid, consistently-colored block, not a one-line
+               sliver. That rules out my first theory (a thin seam revealed by the address bar
+               resizing) and points to the actual mechanism: iOS Safari's elastic overscroll
+               bounce. Proven mathematically, not guessed: resizing the test viewport from 660px
+               to 852px (simulating the browser chrome collapsing) with the page already loaded
+               caused zero change to the page's total height — nothing on the page reacts to
+               viewport size, which means that IF Safari scrolls to the mathematically correct
+               maximum position, blank space below the footer is impossible regardless of viewport
+               size. The only way to see blank space at a resting scroll position is Safari
+               allowing scroll PAST that true boundary — exactly what the elastic bounce does.
+               overscroll-behavior-y disables that for the whole page (Safari 16.4+, 2023) rather
+               than just cosmetically recoloring what it reveals. */
+            html {
+                overscroll-behavior-y: none;
+            }
             /* Blocksy's theme-wide sticky-footer pattern, applied on EVERY page this code
                touches (not just portal pages — the earlier fix here was scoped to $is_portal
                only, so any main-site page with shorter content, or shorter on a device with a
