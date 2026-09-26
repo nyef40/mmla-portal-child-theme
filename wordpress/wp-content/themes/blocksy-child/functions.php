@@ -1229,7 +1229,10 @@ add_action('template_redirect', function() {
                 #cta-section,
                 .elementor-element-4be0b6f,
                 .elementor-element-5f56ce99 {
-                    padding: 8px 12px !important;
+                    /* Padded up from 8px to bring the bar's total height (label row + gap +
+                       button row) in line with the top bar's own mobile height (~67px: a 6px/7px
+                       padded 2-row bar whose first row is set by the 28px brand icon). */
+                    padding: 16px 12px !important;
                 }
                 /* Exactly 2 rows on mobile: label above, both buttons together below — not the
                    3-line result of letting 3 independently-ordered flex items (button/heading/
@@ -1267,8 +1270,10 @@ add_action('template_redirect', function() {
                 .elementor-element-20ab6947 .elementor-heading-title,
                 .elementor-element-c3bc36e .elementor-heading-title,
                 .elementor-element-69fcc976 .elementor-heading-title {
-                    font-size: 11px !important;
-                    white-space: normal;
+                    /* 11px still wrapped to 2 lines within the column's width; small enough +
+                       nowrap guarantees one row regardless of exact available width. */
+                    font-size: 9px !important;
+                    white-space: nowrap !important;
                 }
                 .elementor-element-457c9cb9 .elementor-button, .elementor-element-3265939 .elementor-button, .elementor-element-4c11a21e .elementor-button,
                 .elementor-element-6188f1c9 .elementor-button, .elementor-element-646ce5dc .elementor-button, .elementor-element-763a421c .elementor-button {
