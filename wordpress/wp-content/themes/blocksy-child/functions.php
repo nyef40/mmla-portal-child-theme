@@ -1083,8 +1083,11 @@ add_action('template_redirect', function() {
             }
             
             body.portal-react-mount #portal-root {
-                min-height: calc(100dvh - 70px);
-                min-height: calc(100vh - 70px);
+                /* No forced min-height: same issue as body.portal-single-view (fixed previously)
+                   — a floor here doesn't reserve room for future referral rows or anything else,
+                   it only ever adds blank space while real content (the 4 dashboard cards, the
+                   referrals table) is shorter than ~one screen. Only dashboard/portal-referrals
+                   get this class, matching exactly the 2 pages with the reported dead space. */
                 margin-bottom: 0;
                 padding-bottom: 0;
                 box-sizing: border-box;
