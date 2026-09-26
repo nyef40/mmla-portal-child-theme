@@ -1136,8 +1136,12 @@ add_action('template_redirect', function() {
             <?php if ($is_main_bar): ?>
             /* Blue "Call to Action" bar (home, our-services, about-us): force it edge-to-edge
                regardless of which ancestor is constraining it (differs per page template), match
-               the unified top bar's exact gradient, and match its exact height by shrinking the
-               heading/buttons enough to fit heading + both buttons on one never-wrapping row. */
+               the unified top bar's exact gradient, and match its exact height. The bar was still
+               taller than the top bar because Elementor adds a 20px margin-block-end to any
+               widget that isn't the last child ("widget spacing") — that's zeroed out below.
+               Reordered to Schedule / heading / Refer by making the button-group container and
+               its inner wrapper disappear from layout (display:contents) so its two buttons become
+               direct flex items alongside the heading, then ordering all three explicitly. */
             #cta-section,
             .elementor-element-4be0b6f,
             .elementor-element-5f56ce99 {
@@ -1158,23 +1162,42 @@ add_action('template_redirect', function() {
                 justify-content: center;
                 gap: 16px;
             }
+            .elementor-element-20ab6947,
+            .elementor-element-c3bc36e,
+            .elementor-element-69fcc976,
+            .elementor-element-457c9cb9, .elementor-element-3265939, .elementor-element-4c11a21e,
+            .elementor-element-6188f1c9, .elementor-element-646ce5dc, .elementor-element-763a421c {
+                margin: 0 !important;
+            }
             .elementor-element-20ab6947 .elementor-heading-title,
             .elementor-element-c3bc36e .elementor-heading-title,
             .elementor-element-69fcc976 .elementor-heading-title {
                 font-size: 16px !important;
                 white-space: nowrap;
             }
+            /* Flatten the button-group wrapper so its two buttons become siblings of the heading */
             .elementor-element-1f005b0f,
             .elementor-element-2652459e,
-            .elementor-element-15774cf {
-                display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: nowrap !important;
-                gap: 10px !important;
+            .elementor-element-15774cf,
+            .elementor-element-1f005b0f > .e-con-inner,
+            .elementor-element-2652459e > .e-con-inner,
+            .elementor-element-15774cf > .e-con-inner {
+                display: contents !important;
             }
-            .elementor-element-1f005b0f .elementor-button,
-            .elementor-element-2652459e .elementor-button,
-            .elementor-element-15774cf .elementor-button {
+            /* Schedule a Consultation → first */
+            .elementor-element-457c9cb9, .elementor-element-3265939, .elementor-element-4c11a21e {
+                order: 1;
+            }
+            /* "Call to Action: ..." heading → middle */
+            .elementor-element-20ab6947, .elementor-element-c3bc36e, .elementor-element-69fcc976 {
+                order: 2;
+            }
+            /* Refer a Patient → last */
+            .elementor-element-6188f1c9, .elementor-element-646ce5dc, .elementor-element-763a421c {
+                order: 3;
+            }
+            .elementor-element-457c9cb9 .elementor-button, .elementor-element-3265939 .elementor-button, .elementor-element-4c11a21e .elementor-button,
+            .elementor-element-6188f1c9 .elementor-button, .elementor-element-646ce5dc .elementor-button, .elementor-element-763a421c .elementor-button {
                 padding: 8px 14px !important;
                 font-size: 13px !important;
                 white-space: nowrap;
@@ -1195,12 +1218,32 @@ add_action('template_redirect', function() {
                 .elementor-element-69fcc976 .elementor-heading-title {
                     font-size: 10px !important;
                 }
-                .elementor-element-1f005b0f .elementor-button,
-                .elementor-element-2652459e .elementor-button,
-                .elementor-element-15774cf .elementor-button {
+                .elementor-element-457c9cb9 .elementor-button, .elementor-element-3265939 .elementor-button, .elementor-element-4c11a21e .elementor-button,
+                .elementor-element-6188f1c9 .elementor-button, .elementor-element-646ce5dc .elementor-button, .elementor-element-763a421c .elementor-button {
                     padding: 5px 7px !important;
                     font-size: 8px !important;
                 }
+            }
+
+            /* Secondary informational buttons/toggles across the main-site pages (e.g. "ACHC
+               certified for HIT", "ACHC Accreditation", "Schedule Appointment", "More Information")
+               all use Elementor's "Link" button style or the toggle-accordion widget — get the
+               exact top-bar hover/active pill color on hover/focus/click, matching request, without
+               changing their resting look. Padding/radius is reserved up front so hovering doesn't
+               shift text. */
+            .elementor-button-link,
+            .elementor-tab-title {
+                padding: 4px 10px;
+                border-radius: 8px;
+                transition: background 0.2s ease;
+            }
+            .elementor-button-link:hover,
+            .elementor-button-link:focus,
+            .elementor-button-link:active,
+            .elementor-tab-title:hover,
+            .elementor-tab-title:focus,
+            .elementor-tab-title[aria-expanded="true"] {
+                background: rgba(255, 255, 255, 0.2) !important;
             }
 
             /* Bottom bar above the footer on /resources2/ ("More Resources? Click here:" +
