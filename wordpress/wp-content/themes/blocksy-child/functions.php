@@ -1017,20 +1017,25 @@ add_action('template_redirect', function() {
 
                 /* Main-site: the menu lives inside the actions column, wraps to its own
                    full-width, right-justified line(s) instead of squeezing into a third
-                   of the row like the portal's short action-button group does. */
+                   of the row like the portal's short action-button group does.
+                   !important below: the desktop rules further down this stylesheet set the
+                   same properties (flex-wrap: nowrap, etc.) with equal specificity and no
+                   media query, so being later in source they otherwise win even at mobile
+                   widths — that was silently forcing all 6 menu items onto one line and
+                   pushing "Home" off-screen / clipping "Our Services". */
                 .portal-header--main-site .portal-header-top {
-                    display: flex;
-                    flex-wrap: wrap;
+                    display: flex !important;
+                    flex-wrap: wrap !important;
                     row-gap: 6px;
                 }
                 .portal-header--main-site .portal-header-actions {
-                    width: 100%;
+                    width: 100% !important;
                     justify-content: flex-end;
                     margin-left: 0;
                 }
                 .portal-header--main-site .portal-nav {
-                    width: 100%;
-                    flex-wrap: wrap;
+                    width: 100% !important;
+                    flex-wrap: wrap !important;
                     justify-content: flex-end;
                 }
                 .portal-header--main-site .portal-nav a {
@@ -1201,9 +1206,15 @@ add_action('template_redirect', function() {
                 padding: 8px 14px !important;
                 font-size: 13px !important;
                 white-space: nowrap;
-                /* Shield from the general secondary-button treatment below: these already sit
-                   directly on the bar's own gradient and don't need their own background chip. */
-                background: transparent !important;
+                /* Distinguish the buttons from the bar itself even when not hovered — a
+                   translucent-white pill, the same accent the top bar's own nav items use. */
+                background: rgba(255, 255, 255, 0.2) !important;
+                color: #ffffff !important;
+                border-radius: 25px !important;
+            }
+            .elementor-element-457c9cb9 .elementor-button:hover, .elementor-element-3265939 .elementor-button:hover, .elementor-element-4c11a21e .elementor-button:hover,
+            .elementor-element-6188f1c9 .elementor-button:hover, .elementor-element-646ce5dc .elementor-button:hover, .elementor-element-763a421c .elementor-button:hover {
+                background: rgba(255, 255, 255, 0.32) !important;
             }
             @media (max-width: 640px) {
                 #cta-section,
@@ -1211,9 +1222,14 @@ add_action('template_redirect', function() {
                 .elementor-element-5f56ce99 {
                     padding: 8px 12px !important;
                 }
+                /* !important: the base rule above sets flex-wrap: nowrap with equal specificity
+                   and no media query, so being later in source it otherwise wins even here,
+                   forcing the heading + both buttons onto one row that overflows off-screen on
+                   narrow phones ("both buttons are not seen, do not fit"). */
                 .elementor-element-225e9252 > .elementor-widget-wrap,
                 .elementor-element-7ee5b06d > .elementor-widget-wrap,
                 .elementor-element-65b5b6a > .elementor-widget-wrap {
+                    flex-wrap: wrap !important;
                     gap: 6px 8px;
                 }
                 .elementor-element-20ab6947 .elementor-heading-title,
