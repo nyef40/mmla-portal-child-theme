@@ -1061,9 +1061,12 @@ add_action('template_redirect', function() {
                 .portal-header--main-site .portal-nav a {
                     flex: 0 0 auto;
                     text-align: center;
-                    padding: 4px 2px;
+                    padding: 3px 2px;
                     white-space: nowrap !important;
-                    font-size: 7px;
+                    /* space-between (above) automatically shrinks the gaps between items as they
+                       grow, so bumping the font just eats into that ~116px of slack the 7px
+                       version left unused — no separate gap tuning needed. */
+                    font-size: 10px;
                     line-height: 1.1;
                     letter-spacing: 0;
                 }
@@ -1219,7 +1222,11 @@ add_action('template_redirect', function() {
                 width: 100%;
             }
             .elementor-element-1f005b0f, .elementor-element-2652459e, .elementor-element-15774cf {
-                justify-content: center;
+                /* !important is required: Elementor's own ".e-con.e-grid" rule (2 classes) sets
+                   justify-content: var(--grid-justify-content) — which resolves to "start" — and
+                   beats our 1-class selector on specificity since neither side had !important.
+                   That's what packed both buttons to the left with a large gap on the right. */
+                justify-content: center !important;
                 width: 100%;
             }
             .elementor-element-20ab6947,
@@ -1308,7 +1315,7 @@ add_action('template_redirect', function() {
                 .elementor-element-15774cf {
                     display: flex !important;
                     flex-direction: row !important;
-                    justify-content: center;
+                    justify-content: center !important;
                     gap: 6px !important;
                     order: 2 !important;
                     padding: 0 !important;
@@ -1318,6 +1325,10 @@ add_action('template_redirect', function() {
                 .elementor-element-15774cf > .e-con-inner {
                     display: flex !important;
                     flex-direction: row !important;
+                    /* This nested wrapper — not the outer group — turned out to be the one
+                       actually spanning the full 330px and left-packing the buttons inside
+                       itself; centering only the outer box had nothing left to center. */
+                    justify-content: center !important;
                     gap: 6px !important;
                     padding: 0 !important;
                 }
@@ -1342,12 +1353,8 @@ add_action('template_redirect', function() {
                 #main-container .elementor-element-20ab6947 .elementor-heading-title,
                 #main-container .elementor-element-c3bc36e .elementor-heading-title,
                 #main-container .elementor-element-69fcc976 .elementor-heading-title {
-                    /* Every previous size (11px down to 6px) was never actually applied — the
-                       theme's #main-container h1 rule (see base rule above) was winning on
-                       specificity every time regardless of the value written here, silently
-                       rendering at 26px. Now that the selector actually wins, 10px comfortably
-                       fits the 31-character label with real margin to spare. */
-                    font-size: 10px !important;
+                    /* 10px had a lot of spare room in its 330px-wide centered box; sized up. */
+                    font-size: 15px !important;
                     white-space: nowrap !important;
                 }
                 /* Buttons made larger and more legible now that the label above takes up less
