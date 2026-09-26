@@ -743,17 +743,17 @@ add_action('template_redirect', function() {
             /* Hide theme header everywhere the unified bar replaces it */
             header, .site-header, #masthead, .ct-header { display: none !important; }
             <?php if ($is_portal): ?>
-            /* Portal is a full-screen app: theme footer not needed either */
-            footer, .site-footer, .ct-footer, #colophon { display: none !important; }
-
             body { margin: 0; padding: 0; font-family: 'Inter', -apple-system, sans-serif; }
 
             /* Full-viewport grey (avoids white band below React shell when body was default white) */
             html { background-color: #f1f5f9; }
             body.portal-single-view {
                 background: #f1f5f9 !important;
-                min-height: 100vh;
-                min-height: 100dvh;
+                /* No forced min-height here: html's own grey background (above) already covers
+                   any area below a short page — forcing the body to a full viewport height on
+                   top of that just added dead scroll space past the real content on shorter
+                   portal pages, pushing the copyright footer down below the visible "end" of the
+                   page instead of it being the actual end. */
             }
             #portal-root {
                 background: #f1f5f9;
