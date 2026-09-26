@@ -755,6 +755,24 @@ add_action('template_redirect', function() {
                    portal pages, pushing the copyright footer down below the visible "end" of the
                    page instead of it being the actual end. */
             }
+            /* The real source of the gap (found by actually logging in and measuring
+               dashboard/portal-referrals, not just the anonymous-only pages checked previously):
+               Blocksy's theme-wide sticky-footer pattern. #main-container is
+               "display:flex; flex-direction:column; min-height:100vh" and .site-main has
+               "flex-grow:1" so it stretches to fill the viewport, pushing the footer to the
+               bottom, on ANY page whose content is shorter than one screen. It never showed on
+               portal-login/contact because their form content already exceeds one viewport;
+               dashboard/referrals content is shorter, so the stretch became visible empty space.
+               Both layers need overriding: .site-main's flex-grow stops IT from stretching, but
+               #main-container's OWN min-height:100vh still leaves blank space after its children
+               (confirmed via computed layout: #main-container measured a flat 812px — exactly one
+               viewport — even after .site-main stopped growing). */
+            .site-main {
+                flex-grow: 0 !important;
+            }
+            #main-container {
+                min-height: 0 !important;
+            }
             #portal-root {
                 background: #f1f5f9;
             }
