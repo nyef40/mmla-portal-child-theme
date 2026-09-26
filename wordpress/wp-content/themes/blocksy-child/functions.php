@@ -1745,7 +1745,7 @@ add_action('template_redirect', function() {
       <p>Skilled nursing and therapy delivered in the comfort of home.</p>
     </a>
     <a class="mmla-teaser-card" href="https://mobilemedicalla.com/our-services/#hit">
-      <h3>HIT &amp; Infusion Therapy</h3>
+      <h3>Home Infusion Therapy (HIT)</h3>
       <p>Complex infusions and biologics, safely administered where patients live.</p>
     </a>
     <a class="mmla-teaser-card" href="https://mobilemedicalla.com/our-services/#trials">
