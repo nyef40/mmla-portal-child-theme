@@ -1047,30 +1047,26 @@ add_action('template_redirect', function() {
                     justify-content: flex-end;
                     margin-left: 0;
                 }
-                /* nowrap + equal-share items (not flex:0 0 auto) guarantees exactly one row:
-                   each of the 6 items is compressed to a fixed 1/6th of the width instead of
-                   wrapping onto a second internal line when the natural text widths don't fit —
-                   the same technique the portal's own 5-item mobile nav already uses successfully. */
+                /* Equal-share sizing (flex: 1 1 0) forced every pill to the SAME width regardless
+                   of label length, so "Our Services" (12 chars) got squeezed into the same box as
+                   "Home" (4 chars) and had to wrap internally — up to 3 lines for the longest
+                   labels. Content-based sizing (flex: 0 0 auto) instead gives each pill only the
+                   width its own label needs; the 6 labels combined need roughly 300px at this
+                   font-size, comfortably under a phone's ~350px+ available width, so forcing
+                   nowrap (no internal wrap, no row-wrap) now reliably keeps every label on its
+                   own single line with all 6 fitting on the one row. */
                 .portal-header--main-site .portal-nav {
                     width: 100% !important;
                     flex-wrap: nowrap !important;
                     justify-content: space-between;
-                    gap: 2px;
+                    gap: 3px;
                 }
                 .portal-header--main-site .portal-nav a {
-                    flex: 1 1 0;
-                    min-width: 0;
+                    flex: 0 0 auto;
                     text-align: center;
-                    padding: 5px 2px;
-                    /* The generic .portal-nav a rule forces white-space: nowrap; with each pill
-                       squeezed to 1/6th of the row, "Our Services" (nowrap) rendered wider than
-                       its own box and visually painted over "About Us" next to it. Letting text
-                       wrap inside each pill keeps it within its own box — no more overlap. Smaller
-                       (7.5px, down from 8.5px) so each label fits on one line in the common case
-                       instead of relying on that wrap fallback. */
-                    white-space: normal !important;
-                    word-break: break-word;
-                    font-size: 7.5px;
+                    padding: 5px 4px;
+                    white-space: nowrap !important;
+                    font-size: 8.5px;
                     line-height: 1.15;
                     letter-spacing: 0.01em;
                 }
@@ -1206,7 +1202,12 @@ add_action('template_redirect', function() {
                center each flex item) so both rows are reliably centered as one block, not just
                positioned by their own natural content width. */
             .elementor-element-20ab6947, .elementor-element-c3bc36e, .elementor-element-69fcc976 {
+                /* width:100% here (not just on the inner heading-title span) is the fix: without
+                   it this flex item shrink-wraps to its own content in the column layout, so
+                   centering the text inside had nothing to center against — the box itself sat
+                   off-center, giving the "gap on the left, cut off on the right" look. */
                 text-align: center;
+                width: 100%;
             }
             .elementor-element-20ab6947 .elementor-heading-title,
             .elementor-element-c3bc36e .elementor-heading-title,
@@ -1271,8 +1272,10 @@ add_action('template_redirect', function() {
                 #cta-section,
                 .elementor-element-4be0b6f,
                 .elementor-element-5f56ce99 {
-                    min-height: 52px !important;
-                    padding: 6px 12px !important;
+                    /* Buttons are fine as-is — the shorter height comes from tighter padding
+                       and row gap, not from shrinking them further. */
+                    min-height: 44px !important;
+                    padding: 4px 12px !important;
                     display: flex !important;
                     flex-direction: column !important;
                     align-items: center !important;
@@ -1286,7 +1289,7 @@ add_action('template_redirect', function() {
                 .elementor-element-65b5b6a > .elementor-widget-wrap {
                     flex-direction: column !important;
                     flex-wrap: nowrap !important;
-                    gap: 4px !important;
+                    gap: 3px !important;
                 }
                 /* ...then undo display:contents so the button-group is one box again (both
                    buttons rendered together, side by side, as that single second row). */
