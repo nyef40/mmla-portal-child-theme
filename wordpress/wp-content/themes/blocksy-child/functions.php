@@ -582,6 +582,17 @@ function is_portal_page() {
 }
 
 /**
+ * Main-site pages that should render the unified portal-style top bar
+ * (brand + title + nav) instead of Blocksy's default header, so visitors
+ * see one horizontal bar instead of the theme header plus a per-page
+ * Elementor title section.
+ */
+function mmla_is_main_site_bar_page() {
+    if (is_admin() || is_portal_page()) return false;
+    return is_front_page() || is_page(['our-services', 'about-us', 'ivig-news', 'resources2']);
+}
+
+/**
  * YouTube video IDs for the public /resources/ page (page-resources.php).
  *
  * Precedence:
@@ -717,16 +728,24 @@ add_action('wp_enqueue_scripts', function() {
 // 3. PORTAL TEMPLATE OUTPUT
 // ============================================
 add_action('template_redirect', function() {
-    if (!is_portal_page()) return;
-    
+    $is_portal   = is_portal_page();
+    $is_main_bar = mmla_is_main_site_bar_page();
+    if (!$is_portal && !$is_main_bar) return;
+
+    // Main-site pages whose Elementor content opens with a redundant page-title
+    // section (it duplicates the unified bar's title) — hide just that section.
+    $hide_title_hero = $is_main_bar && is_page(['our-services', 'about-us', 'ivig-news', 'resources2']);
+
     // Add styles to head
-    add_action('wp_head', function() {
+    add_action('wp_head', function() use ($is_portal, $is_main_bar, $hide_title_hero) {
         ?>
         <style>
-            /* Hide theme header/footer */
-            header, .site-header, #masthead, footer, .site-footer, 
-            .ct-header, .ct-footer, #colophon { display: none !important; }
-            
+            /* Hide theme header everywhere the unified bar replaces it */
+            header, .site-header, #masthead, .ct-header { display: none !important; }
+            <?php if ($is_portal): ?>
+            /* Portal is a full-screen app: theme footer not needed either */
+            footer, .site-footer, .ct-footer, #colophon { display: none !important; }
+
             body { margin: 0; padding: 0; font-family: 'Inter', -apple-system, sans-serif; }
 
             /* Full-viewport grey (avoids white band below React shell when body was default white) */
@@ -739,6 +758,7 @@ add_action('template_redirect', function() {
             #portal-root {
                 background: #f1f5f9;
             }
+            <?php endif; ?>
 
             /* Dashboard / referrals: strip theme bottom padding from empty loop content */
             body.portal-react-mount .site-content,
@@ -754,7 +774,7 @@ add_action('template_redirect', function() {
                 padding-bottom: 0 !important;
             }
             
-            /* Portal Header */
+            /* Portal Header: single source of truth for the site-level portal nav. */
             .portal-header {
                 background: linear-gradient(135deg, #0A3D62 0%, #1a5a8a 50%, #2980b9 100%);
                 padding: 0;
@@ -767,54 +787,257 @@ add_action('template_redirect', function() {
                 max-width: 1400px;
                 margin: 0 auto;
                 display: flex;
-                justify-content: space-between;
                 align-items: center;
-                padding: 12px 24px;
+                justify-content: space-between;
+                padding: 10px 24px;
+                gap: 12px;
             }
-            .portal-logo {
-                color: white;
-                font-size: 18px;
-                font-weight: 700;
-                text-decoration: none;
+            .portal-header-inner > * {
+                min-width: 0;
+            }
+            .portal-header-top {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+                align-items: center;
+                gap: 12px;
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+            .portal-brand {
                 display: flex;
                 align-items: center;
                 gap: 10px;
+                text-decoration: none;
+                min-width: 0;
+                justify-self: start;
             }
-            .portal-logo img {
-                height: 45px;
+            .portal-brand-icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 42px;
+                min-width: 42px;
+                height: 42px;
+                border-radius: 10px;
+                background: #edf4ff;
+                border: 2px solid rgba(255,255,255,0.6);
+                box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.12);
+            }
+            .portal-brand-icon img {
+                height: 28px;
                 width: auto;
+            }
+            .portal-brand-meta {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                min-width: 0;
+                flex-wrap: nowrap;
+            }
+            .portal-brand-name {
+                color: #f9fbff;
+                font-size: 13px;
+                font-weight: 700;
+                line-height: 1.2;
+                white-space: nowrap;
+            }
+            .portal-page-title {
+                color: #ffffff;
+                font-size: clamp(20px, 2vw, 32px);
+                font-weight: 800;
+                line-height: 1.1;
+                letter-spacing: 0.02em;
+                text-align: center;
+                white-space: nowrap;
+                justify-self: center;
+                text-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+            }
+            .portal-header-actions {
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                gap: 8px;
+                flex-shrink: 0;
+                justify-self: end;
+            }
+            .portal-header-actions a,
+            .portal-nav a {
+                color: rgba(255,255,255,0.85);
+                text-decoration: none;
+                transition: all 0.3s ease;
+                white-space: nowrap;
+            }
+            .portal-header-actions a {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 8px 12px;
+                border-radius: 999px;
+                font-size: 12px;
+                font-weight: 600;
+                line-height: 1.2;
+            }
+            .portal-header-actions .logout-btn {
+                background: linear-gradient(135deg, #e74c3c, #c0392b);
+                color: white !important;
+            }
+            .portal-header-actions .logout-btn:hover {
+                background: linear-gradient(135deg, #c0392b, #a93226);
+                transform: translateY(-1px);
+            }
+            .portal-header-actions .back-to-site,
+            .back-to-site {
+                background: rgba(255,255,255,0.15);
+                border: 1px solid rgba(255,255,255,0.3);
+                backdrop-filter: blur(10px);
+                color: white !important;
             }
             .portal-nav {
                 display: flex;
                 gap: 8px;
                 align-items: center;
+                flex-wrap: wrap;
+                justify-content: flex-end;
             }
             .portal-nav a {
-                color: rgba(255,255,255,0.85);
-                text-decoration: none;
-                padding: 10px 18px;
+                padding: 9px 14px;
                 border-radius: 25px;
                 font-weight: 500;
                 font-size: 14px;
-                transition: all 0.3s ease;
             }
             .portal-nav a:hover, .portal-nav a.active {
                 background: rgba(255,255,255,0.2);
                 color: white;
             }
-            .portal-nav .logout-btn {
-                background: linear-gradient(135deg, #e74c3c, #c0392b);
-                color: white !important;
-                margin-left: 10px;
-            }
-            .portal-nav .logout-btn:hover {
-                background: linear-gradient(135deg, #c0392b, #a93226);
-                transform: translateY(-1px);
-            }
-            .back-to-site {
-                background: rgba(255,255,255,0.15);
-                border: 1px solid rgba(255,255,255,0.3);
-                backdrop-filter: blur(10px);
+
+            @media (max-width: 640px) {
+                .portal-header-inner {
+                    display: flex;
+                    flex-direction: column;
+                    padding: 6px 8px 7px;
+                    gap: 4px;
+                }
+                .portal-header-top {
+                    display: grid;
+                    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+                    align-items: center;
+                    width: 100%;
+                    gap: 6px;
+                }
+                .portal-brand {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    min-width: 0;
+                    justify-self: start;
+                }
+                .portal-brand-icon {
+                    width: 28px;
+                    min-width: 28px;
+                    height: 28px;
+                    border-radius: 8px;
+                    background: #edf4ff;
+                    border: 1px solid rgba(255,255,255,0.75);
+                    box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 6px rgba(0,0,0,0.12);
+                }
+                .portal-brand-icon img {
+                    height: 20px;
+                    width: auto;
+                }
+                .portal-brand-meta {
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    overflow: hidden;
+                    flex-wrap: nowrap;
+                }
+                .portal-brand-name {
+                    color: #ffffff;
+                    font-size: 9px;
+                    font-weight: 700;
+                    white-space: nowrap;
+                    line-height: 1.1;
+                }
+                .portal-page-title {
+                    color: #ffffff;
+                    font-size: 16px;
+                    font-weight: 800;
+                    line-height: 1.1;
+                    letter-spacing: 0.02em;
+                    text-align: center;
+                    white-space: nowrap;
+                    justify-self: center;
+                }
+                .portal-header-actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    margin-left: auto;
+                    flex-shrink: 0;
+                    justify-self: end;
+                }
+                .portal-header-actions a {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    text-decoration: none;
+                    font-size: 9px;
+                    line-height: 1.1;
+                    font-weight: 600;
+                    padding: 5px 7px;
+                    border-radius: 999px;
+                    white-space: nowrap;
+                }
+                .portal-header-actions .logout-btn {
+                    background: linear-gradient(135deg, #e74c3c, #c0392b);
+                    color: white !important;
+                }
+                .portal-header-actions .back-to-site {
+                    background: rgba(255,255,255,0.15);
+                    border: 1px solid rgba(255,255,255,0.3);
+                    color: white !important;
+                }
+                .portal-nav {
+                    width: 100%;
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 4px;
+                    flex-wrap: nowrap;
+                }
+                .portal-nav a {
+                    flex: 1 1 0;
+                    min-width: 0;
+                    text-align: center;
+                    padding: 6px 4px;
+                    font-size: 8.7px;
+                    line-height: 1.1;
+                    border-radius: 8px;
+                    letter-spacing: 0.02em;
+                }
+
+                /* Main-site: the menu lives inside the actions column, wraps to its own
+                   full-width, right-justified line(s) instead of squeezing into a third
+                   of the row like the portal's short action-button group does. */
+                .portal-header--main-site .portal-header-top {
+                    display: flex;
+                    flex-wrap: wrap;
+                    row-gap: 6px;
+                }
+                .portal-header--main-site .portal-header-actions {
+                    width: 100%;
+                    justify-content: flex-end;
+                    margin-left: 0;
+                }
+                .portal-header--main-site .portal-nav {
+                    width: 100%;
+                    flex-wrap: wrap;
+                    justify-content: flex-end;
+                }
+                .portal-header--main-site .portal-nav a {
+                    flex: 0 0 auto;
+                    font-size: 10px;
+                    padding: 6px 9px;
+                }
             }
             
             body.portal-react-mount #portal-root {
@@ -853,24 +1076,164 @@ add_action('template_redirect', function() {
             @keyframes spin {
                 to { transform: rotate(360deg); }
             }
+
+            /* Main-site variant of the unified bar: full page width instead of a centered max-width,
+               and the menu lives inside the actions column (single row) instead of a second row.
+               Flex (not the portal's 1fr/auto/1fr grid) so brand + nav each take only the width
+               they need and the title absorbs whatever's left — the grid's equal-thirds split left
+               too little room for 7 menu items at normal desktop widths and forced "Portal" to wrap. */
+            .portal-header--main-site .portal-header-inner {
+                max-width: none;
+            }
+            .portal-header--main-site .portal-header-top {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+            }
+            .portal-header--main-site .portal-brand {
+                flex: 0 0 auto;
+            }
+            .portal-header--main-site .portal-page-title {
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+            .portal-header--main-site .portal-header-actions {
+                flex: 0 0 auto;
+                gap: 4px;
+            }
+            .portal-header--main-site .portal-nav {
+                flex-wrap: nowrap;
+                gap: 4px;
+            }
+            @media (max-width: 1100px) {
+                .portal-header--main-site .portal-nav a {
+                    padding: 7px 10px;
+                    font-size: 12px;
+                }
+                .portal-header--main-site .portal-header-top {
+                    gap: 8px;
+                }
+            }
+            <?php if ($hide_title_hero): ?>
+            /* Remove the page's own redundant title section; the unified bar's title replaces it.
+               Targets the Elementor page wrapper's first section directly so it works whether the
+               page uses the theme's article wrapper or Elementor's own full-width/canvas template. */
+            [data-elementor-type="wp-page"] > .elementor-element:first-child {
+                display: none !important;
+            }
+            <?php endif; ?>
+            <?php if ($is_main_bar): ?>
+            /* WordPress core's global "constrained" layout squeezes the whole Elementor canvas into
+               a centered column, overriding Elementor's own full-width sections (e.g. the blue
+               Call-to-Action bar). Let Elementor control its own section widths again. */
+            .entry-content.is-layout-constrained > .elementor {
+                max-width: none !important;
+                margin-left: 0 !important;
+                margin-right: 0 !important;
+            }
+            <?php endif; ?>
+            <?php if ($is_main_bar): ?>
+            /* Blue "Call to Action" bar (home, our-services, about-us): force it edge-to-edge
+               regardless of which ancestor is constraining it (differs per page template), and
+               shrink it toward the unified bar's height by removing most of its padding and
+               laying the heading + the two buttons out in one row instead of stacked. */
+            #cta-section,
+            .elementor-element-4be0b6f,
+            .elementor-element-5f56ce99 {
+                width: 100vw !important;
+                max-width: 100vw !important;
+                margin-left: calc(50% - 50vw) !important;
+                margin-right: calc(50% - 50vw) !important;
+                padding: 14px 24px !important;
+            }
+            .elementor-element-225e9252 > .elementor-widget-wrap,
+            .elementor-element-7ee5b06d > .elementor-widget-wrap,
+            .elementor-element-65b5b6a > .elementor-widget-wrap {
+                display: flex !important;
+                flex-direction: row;
+                flex-wrap: wrap;
+                align-items: center;
+                justify-content: center;
+                gap: 10px 20px;
+            }
+            .elementor-element-1f005b0f,
+            .elementor-element-2652459e,
+            .elementor-element-15774cf {
+                display: flex !important;
+                flex-direction: row !important;
+                gap: 10px !important;
+            }
+            <?php endif; ?>
+            <?php if ($is_main_bar && is_front_page()): ?>
+            /* Home hero currently carries ~200px of Elementor padding around two lines of text;
+               shrink it to roughly twice the unified bar's height, matching request. !important
+               beats Elementor's own generated (non-!important) padding rule at every breakpoint. */
+            #hero-section {
+                padding: 24px 30px !important;
+                background: #F5F6FA !important;
+            }
+            /* Swap the white/light-green text (designed for the navy gradient) for the same navy
+               used on the "Specialized in IVIG Infusion Therapy" section, which sits on this exact
+               grey and is legible there. */
+            .elementor-element-3b4f5bbd .elementor-heading-title {
+                color: #0A3D62 !important;
+            }
+            .elementor-element-6baee9e6 .elementor-heading-title {
+                color: rgba(10, 61, 98, 0.75) !important;
+            }
+            <?php endif; ?>
         </style>
         <?php
     }, 999);
     
     // Add header HTML – all links use home_url() so Register/Login go to correct pages
-    add_action('wp_body_open', function() {
+    add_action('wp_body_open', function() use ($is_portal) {
         global $post;
         $current = $post ? $post->post_name : '';
         $is_logged_in = is_user_logged_in();
         $logout_url = wp_logout_url(home_url('/portal-login/'));
         $logo = home_url('/wp-content/uploads/2024/03/2018_04_01_mmla_logo-removebg-preview.png');
+        $brand_url = $is_portal ? home_url('/portal/') : home_url('/');
         ?>
-        <div class="portal-header">
+        <div class="portal-header<?php echo $is_portal ? '' : ' portal-header--main-site'; ?>">
             <div class="portal-header-inner">
-                <a href="<?php echo esc_url(home_url('/portal/')); ?>" class="portal-logo">
-                    <img src="<?php echo esc_url($logo); ?>" alt="MMLA" onerror="this.style.display='none'">
-                    <span>Provider Portal</span>
-                </a>
+                <div class="portal-header-top">
+                    <a href="<?php echo esc_url($brand_url); ?>" class="portal-brand" aria-label="Mobile Medical LA">
+                        <span class="portal-brand-icon">
+                            <img src="<?php echo esc_url($logo); ?>" alt="MMLA" onerror="this.style.display='none'">
+                        </span>
+                        <span class="portal-brand-meta">
+                            <span class="portal-brand-name">Mobile Medical LA</span>
+                        </span>
+                    </a>
+                    <div class="portal-page-title"><?php echo $is_portal ? 'Provider Portal' : 'Mobile Medical LA'; ?></div>
+                    <div class="portal-header-actions">
+                        <?php if ($is_portal): ?>
+                            <?php if ($is_logged_in): ?>
+                                <a href="<?php echo esc_url($logout_url); ?>" class="logout-btn">Logout</a>
+                            <?php else: ?>
+                                <a href="<?php echo esc_url(home_url('/portal-login/')); ?>" class="<?php echo $current === 'portal-login' ? 'active' : ''; ?>">Login</a>
+                            <?php endif; ?>
+                            <a href="<?php echo esc_url(home_url('/')); ?>" class="back-to-site">Main Site</a>
+                        <?php else: ?>
+                            <nav class="portal-nav">
+                                <?php if ($is_logged_in): ?>
+                                    <a href="<?php echo esc_url(home_url('/dashboard/')); ?>" class="<?php echo $current === 'dashboard' ? 'active' : ''; ?>">Provider Dashboard</a>
+                                <?php else: ?>
+                                    <a href="<?php echo esc_url(home_url('/portal-login/')); ?>" class="<?php echo $current === 'portal-login' ? 'active' : ''; ?>">Provider Login</a>
+                                <?php endif; ?>
+                                <a href="<?php echo esc_url(home_url('/')); ?>" class="<?php echo is_front_page() ? 'active' : ''; ?>">Home</a>
+                                <a href="<?php echo esc_url(home_url('/our-services/')); ?>" class="<?php echo $current === 'our-services' ? 'active' : ''; ?>">Our Services</a>
+                                <a href="<?php echo esc_url(home_url('/about-us/')); ?>" class="<?php echo $current === 'about-us' ? 'active' : ''; ?>">About Us</a>
+                                <a href="<?php echo esc_url(home_url('/ivig-news/')); ?>" class="<?php echo $current === 'ivig-news' ? 'active' : ''; ?>">IVIG News</a>
+                                <a href="<?php echo esc_url(home_url('/resources2/')); ?>" class="<?php echo $current === 'resources2' ? 'active' : ''; ?>">Resources</a>
+                                <a href="<?php echo esc_url(home_url('/portal/')); ?>" class="<?php echo $current === 'portal' ? 'active' : ''; ?>">Portal</a>
+                            </nav>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php if ($is_portal): ?>
                 <nav class="portal-nav">
                     <?php if ($is_logged_in): ?>
                         <a href="<?php echo esc_url(home_url('/dashboard/')); ?>" class="<?php echo $current === 'dashboard' ? 'active' : ''; ?>">Dashboard</a>
@@ -878,13 +1241,12 @@ add_action('template_redirect', function() {
                         <a href="<?php echo esc_url(home_url('/portal-resources/')); ?>" class="<?php echo $current === 'portal-resources' ? 'active' : ''; ?>">Resources</a>
                         <a href="<?php echo esc_url(home_url('/portal-referrals/')); ?>" class="<?php echo $current === 'portal-referrals' ? 'active' : ''; ?>">Referrals</a>
                         <a href="<?php echo esc_url(home_url('/contact/')); ?>" class="<?php echo $current === 'contact' ? 'active' : ''; ?>">Contact</a>
-                        <a href="<?php echo esc_url($logout_url); ?>" class="logout-btn">Logout</a>
                     <?php else: ?>
                         <a href="<?php echo esc_url(home_url('/portal-login/')); ?>" class="<?php echo $current === 'portal-login' ? 'active' : ''; ?>">Login</a>
                         <a href="<?php echo esc_url(home_url('/register/')); ?>" class="<?php echo $current === 'register' ? 'active' : ''; ?>">Register</a>
                     <?php endif; ?>
-                    <a href="<?php echo esc_url(home_url('/')); ?>" class="back-to-site">Main Site</a>
                 </nav>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -892,7 +1254,7 @@ add_action('template_redirect', function() {
         // Only inject the React mount point on pages that actually run the React app.
         // PHP-only pages (portal-profile, portal-resources, contact, portal-login, register)
         // render their own content inside <div id="portal-page-main"> via their page templates.
-        if (is_page(['dashboard', 'portal-referrals'])): ?>
+        if ($is_portal && is_page(['dashboard', 'portal-referrals'])): ?>
         <div id="portal-root">
             <div class="portal-init-loading">
                 <div class="spinner"></div>
