@@ -1023,6 +1023,14 @@ add_action('template_redirect', function() {
                    media query, so being later in source they otherwise win even at mobile
                    widths — that was silently forcing all 6 menu items onto one line and
                    pushing "Home" off-screen / clipping "Our Services". */
+                /* Pinned so the CTA bar (below) can be set to this exact same value — matching
+                   two bars by independently tuning their own padding/font-size keeps drifting out
+                   of sync as either one's content wraps differently; an explicit shared number
+                   guarantees equality regardless. */
+                .portal-header--main-site .portal-header-inner {
+                    min-height: 70px !important;
+                    justify-content: center;
+                }
                 .portal-header--main-site .portal-header-top {
                     display: flex !important;
                     flex-wrap: wrap !important;
@@ -1048,6 +1056,12 @@ add_action('template_redirect', function() {
                     min-width: 0;
                     text-align: center;
                     padding: 6px 2px;
+                    /* The generic .portal-nav a rule forces white-space: nowrap; with each pill
+                       squeezed to 1/6th of the row, "Our Services" (nowrap) rendered wider than
+                       its own box and visually painted over "About Us" next to it. Letting text
+                       wrap inside each pill keeps it within its own box — no more overlap. */
+                    white-space: normal !important;
+                    word-break: break-word;
                     font-size: 8.5px;
                     line-height: 1.15;
                     letter-spacing: 0.01em;
@@ -1229,10 +1243,15 @@ add_action('template_redirect', function() {
                 #cta-section,
                 .elementor-element-4be0b6f,
                 .elementor-element-5f56ce99 {
-                    /* Padded up from 8px to bring the bar's total height (label row + gap +
-                       button row) in line with the top bar's own mobile height (~67px: a 6px/7px
-                       padded 2-row bar whose first row is set by the 28px brand icon). */
-                    padding: 16px 12px !important;
+                    /* Same explicit min-height as .portal-header--main-site .portal-header-inner
+                       above — an exact shared number instead of trying to independently tune each
+                       bar's padding to happen to add up to the same total. */
+                    min-height: 70px !important;
+                    padding: 6px 12px !important;
+                    display: flex !important;
+                    flex-direction: column !important;
+                    align-items: center !important;
+                    justify-content: center !important;
                 }
                 /* Exactly 2 rows on mobile: label above, both buttons together below — not the
                    3-line result of letting 3 independently-ordered flex items (button/heading/
@@ -1270,15 +1289,17 @@ add_action('template_redirect', function() {
                 .elementor-element-20ab6947 .elementor-heading-title,
                 .elementor-element-c3bc36e .elementor-heading-title,
                 .elementor-element-69fcc976 .elementor-heading-title {
-                    /* 11px still wrapped to 2 lines within the column's width; small enough +
-                       nowrap guarantees one row regardless of exact available width. */
-                    font-size: 9px !important;
+                    /* Small enough to fit the full 31-character label on one line even on the
+                       narrowest phones (nowrap guarantees it never wraps or grows the bar). */
+                    font-size: 7px !important;
                     white-space: nowrap !important;
                 }
+                /* Buttons made larger and more legible now that the label above takes up less
+                   room — this is the actual call to action, it should read easily. */
                 .elementor-element-457c9cb9 .elementor-button, .elementor-element-3265939 .elementor-button, .elementor-element-4c11a21e .elementor-button,
                 .elementor-element-6188f1c9 .elementor-button, .elementor-element-646ce5dc .elementor-button, .elementor-element-763a421c .elementor-button {
-                    padding: 5px 7px !important;
-                    font-size: 8px !important;
+                    padding: 7px 12px !important;
+                    font-size: 11px !important;
                 }
             }
 
