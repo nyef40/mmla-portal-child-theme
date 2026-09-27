@@ -369,13 +369,44 @@ function get_referrals_callback() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'referral_submissions';
 
-    $referrals = $wpdb->get_results("
-        SELECT submission_id, provider_name, provider_practice, provider_email,
-               patient_name, reason, created_at, is_validated
-        FROM {$table_name}
-        ORDER BY created_at DESC
-        LIMIT 20
-    ");
+    if (function_exists('mmla_referral_ensure_eligibility_columns')) {
+        mmla_referral_ensure_eligibility_columns();
+    }
+
+    // Providers see only their own submissions; only real site admins
+    // (manage_options) see the full list across all providers. Previously
+    // this had no WHERE clause at all, so any logged-in provider saw every
+    // other provider's referrals (names, emails, patient names) — fixed here.
+    $wp_user_id = get_current_user_id();
+    $portal_user_id = $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}portal_users WHERE wp_user_id = %d LIMIT 1",
+        $wp_user_id
+    ));
+
+    if (current_user_can('manage_options')) {
+        $referrals = $wpdb->get_results("
+            SELECT submission_id, provider_name, provider_practice, provider_email,
+                   patient_name, reason, created_at, is_validated,
+                   insurance_carrier, eligibility_status, updated_at
+            FROM {$table_name}
+            ORDER BY created_at DESC
+            LIMIT 20
+        ");
+    } elseif ($portal_user_id) {
+        $referrals = $wpdb->get_results($wpdb->prepare("
+            SELECT submission_id, provider_name, provider_practice, provider_email,
+                   patient_name, reason, created_at, is_validated,
+                   insurance_carrier, eligibility_status, updated_at
+            FROM {$table_name}
+            WHERE user_id = %d
+            ORDER BY created_at DESC
+            LIMIT 20
+        ", (int) $portal_user_id));
+    } else {
+        // No portal_users row for this WP user (e.g. legacy account) — show
+        // nothing rather than defaulting to "everyone's referrals".
+        $referrals = [];
+    }
 
     // Some legacy referrals were stored with MySQL AES_ENCRYPT(patient_name, 'mmla_2025').
     // Newer rows are plaintext. try_decrypt_field() handles both transparently:
@@ -428,6 +459,12 @@ function submit_referral_callback() {
 
     $notes = sanitize_textarea_field($_POST['notes'] ?? '');
 
+    $insurance_raw = sanitize_text_field($_POST['insurance_carrier'] ?? '');
+    $allowed_carriers = function_exists('mmla_referral_allowed_insurance_carriers')
+        ? mmla_referral_allowed_insurance_carriers()
+        : ['Medicare (Fee-for-Service)', 'Blue Shield of California', 'Other / Not sure'];
+    $insurance_carrier = in_array($insurance_raw, $allowed_carriers, true) ? $insurance_raw : 'Other / Not sure';
+
     // Encrypt PHI fields at rest with MySQL-compatible AES-128 ECB.
     // Read path uses try_decrypt_field() to transparently decrypt these values.
     $patient_name  = ($patient_name_plain  !== '' && function_exists('mysql_aes_encrypt'))
@@ -452,6 +489,9 @@ function submit_referral_callback() {
     if (function_exists('mmla_referral_ensure_validation_token_column')) {
         mmla_referral_ensure_validation_token_column();
     }
+    if (function_exists('mmla_referral_ensure_eligibility_columns')) {
+        mmla_referral_ensure_eligibility_columns();
+    }
 
     $raw_validation_token = wp_generate_password(48, false, false);
     $validation_token_hash = hash('sha256', $raw_validation_token);
@@ -467,6 +507,8 @@ function submit_referral_callback() {
             'patient_email' => $patient_email,
             'reason' => $reason,
             'notes' => $notes,
+            'insurance_carrier' => $insurance_carrier,
+            'eligibility_status' => 'not_applicable',
             'user_id' => $portal_user_id,
             'created_at' => current_time('mysql'),
             'is_validated' => 0,

@@ -128,6 +128,16 @@ function Referrals() {
                   </select>
                 </div>
                 <div className="form-group">
+                  <label>Patient Insurance</label>
+                  <select name="insurance_carrier" id="insurance_carrier" defaultValue="">
+                    <option value="">-- Select Insurance --</option>
+                    <option value="Medicare (Fee-for-Service)">Medicare (Fee-for-Service)</option>
+                    <option value="Blue Shield of California">Blue Shield of California</option>
+                    <option value="Other / Not sure">Other / Not sure</option>
+                  </select>
+                  <p className="field-hint">Used to flag whether this referral needs an eligibility check. Medicare Advantage does not qualify — only standard/original Medicare (FFS).</p>
+                </div>
+                <div className="form-group">
                   <label>Additional Notes</label>
                   <textarea name="notes" rows="3" />
                 </div>
@@ -152,8 +162,10 @@ function Referrals() {
                     <th>Patient</th>
                     <th>Provider</th>
                     <th>Reason</th>
+                    <th>Insurance</th>
                     <th>Date</th>
                     <th>Status</th>
+                    <th>Eligibility</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -162,11 +174,24 @@ function Referrals() {
                       <td>{ref.patient_name}</td>
                       <td>{ref.provider_name}</td>
                       <td>{ref.reason}</td>
+                      <td>{ref.insurance_carrier || '—'}</td>
                       <td>{new Date(ref.created_at).toLocaleDateString()}</td>
                       <td>
                         <span className={`status-badge ${ref.is_validated ? 'validated' : 'pending'}`}>
                           {ref.is_validated ? 'Validated' : 'Pending'}
                         </span>
+                      </td>
+                      <td>
+                        {ref.eligibility_status === 'eligible' && (
+                          <span className="status-badge validated">Eligible</span>
+                        )}
+                        {ref.eligibility_status === 'not_eligible' && (
+                          <span className="status-badge error">Not Eligible</span>
+                        )}
+                        {ref.eligibility_status === 'pending_review' && (
+                          <span className="status-badge pending">Needs Review</span>
+                        )}
+                        {(!ref.eligibility_status || ref.eligibility_status === 'not_applicable') && '—'}
                       </td>
                     </tr>
                   ))}

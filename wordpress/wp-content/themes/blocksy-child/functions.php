@@ -2345,6 +2345,49 @@ if (!function_exists('mmla_referral_ensure_validation_token_column')) {
     }
 }
 
+if (!function_exists('mmla_referral_allowed_insurance_carriers')) {
+    // The only two payers MMLA currently knows it gets paid by for home
+    // infusion (Medicare FFS — not Medicare Advantage — and Blue Shield of
+    // CA). Referrals outside this list are out of scope for eligibility
+    // review; keep this list in sync with the <select> in Referrals.js.
+    function mmla_referral_allowed_insurance_carriers() {
+        return [
+            'Medicare (Fee-for-Service)',
+            'Blue Shield of California',
+            'Other / Not sure',
+        ];
+    }
+}
+
+if (!function_exists('mmla_referral_eligibility_tracked_carriers')) {
+    // Subset of the above that actually triggers an eligibility-review
+    // prompt to admin — "Other / Not sure" is a valid form answer but never
+    // program-eligible on its own.
+    function mmla_referral_eligibility_tracked_carriers() {
+        return [
+            'Medicare (Fee-for-Service)',
+            'Blue Shield of California',
+        ];
+    }
+}
+
+if (!function_exists('mmla_referral_ensure_eligibility_columns')) {
+    function mmla_referral_ensure_eligibility_columns() {
+        global $wpdb;
+        $table = $wpdb->prefix . 'referral_submissions';
+        $add = function ($column, $ddl) use ($wpdb, $table) {
+            $exists = $wpdb->get_results("SHOW COLUMNS FROM `{$table}` LIKE '{$column}'");
+            if (empty($exists)) {
+                $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN {$ddl}");
+            }
+        };
+        $add('insurance_carrier', "`insurance_carrier` VARCHAR(64) NULL DEFAULT NULL");
+        $add('eligibility_status', "`eligibility_status` VARCHAR(32) NOT NULL DEFAULT 'not_applicable'");
+        $add('eligibility_token', "`eligibility_token` VARCHAR(64) NULL DEFAULT NULL");
+        $add('updated_at', "`updated_at` DATETIME NULL DEFAULT NULL");
+    }
+}
+
 if (!function_exists('mmla_referral_validation_url')) {
     function mmla_referral_validation_url($submission_id, $raw_token) {
         return add_query_arg(
@@ -2355,6 +2398,118 @@ if (!function_exists('mmla_referral_validation_url')) {
             ],
             home_url('/')
         );
+    }
+}
+
+if (!function_exists('mmla_referral_eligibility_action_url')) {
+    function mmla_referral_eligibility_action_url($submission_id, $raw_token, $decision) {
+        return add_query_arg(
+            [
+                'action'   => 'referral_eligibility',
+                'sid'      => (int) $submission_id,
+                'token'    => $raw_token,
+                'decision' => $decision,
+            ],
+            home_url('/')
+        );
+    }
+}
+
+if (!function_exists('mmla_send_referral_admin_notification_email')) {
+    /**
+     * Fires once a referral is provider-validated. Always tells admin a
+     * referral is confirmed; when the insurance carrier is one of the two
+     * MMLA currently knows it gets paid by, also generates a single-use
+     * eligibility-decision token and includes one-click "Eligible" /
+     * "Not Eligible" links (same secret-token pattern as the provider
+     * validation link) so the still-manual portal check at
+     * blueshieldca.com / provider.wellpointfederal.com has somewhere to
+     * report its result back to.
+     */
+    function mmla_send_referral_admin_notification_email($submission_id) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'referral_submissions';
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT submission_id, provider_name, provider_practice, provider_email, provider_phone,
+                    patient_name, patient_email, reason, notes, insurance_carrier, eligibility_status
+             FROM `{$table}` WHERE submission_id = %d LIMIT 1",
+            $submission_id
+        ));
+        if (!$row) {
+            return false;
+        }
+
+        $patient_name = function_exists('try_decrypt_field') ? try_decrypt_field($row->patient_name) : $row->patient_name;
+        $admin_email = get_option('admin_email');
+        if (empty($admin_email) || !is_email($admin_email)) {
+            error_log('[Portal] Referral admin notification skipped: invalid admin_email');
+            return false;
+        }
+
+        $site = wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES);
+        $tracked = in_array($row->insurance_carrier, mmla_referral_eligibility_tracked_carriers(), true);
+
+        $action_html = '';
+        if ($tracked) {
+            $raw_token = wp_generate_password(48, false, false);
+            $hash = hash('sha256', $raw_token);
+            $wpdb->update(
+                $table,
+                [
+                    'eligibility_status' => 'pending_review',
+                    'eligibility_token'  => $hash,
+                    'updated_at'         => current_time('mysql'),
+                ],
+                ['submission_id' => (int) $submission_id]
+            );
+
+            $eligible_url = esc_url(mmla_referral_eligibility_action_url($submission_id, $raw_token, 'eligible'));
+            $not_eligible_url = esc_url(mmla_referral_eligibility_action_url($submission_id, $raw_token, 'not_eligible'));
+
+            $action_html = '<p style="color:#334155;font-size:15px;line-height:1.6;margin:24px 0 12px;">'
+                . 'Insurance: <strong>' . esc_html($row->insurance_carrier) . '</strong> — this referral is in scope for the referral program. '
+                . 'Verify eligibility manually (Blue Shield CA provider portal or Wellpoint Federal), then record the result:</p>'
+                . '<table cellpadding="0" cellspacing="0"><tr>'
+                . '<td style="padding-right:12px;"><a href="' . $eligible_url . '" style="display:inline-block;background:#1a8a4a;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:15px;font-weight:600;">Mark Eligible</a></td>'
+                . '<td><a href="' . $not_eligible_url . '" style="display:inline-block;background:#a3231f;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:15px;font-weight:600;">Mark Not Eligible</a></td>'
+                . '</tr></table>';
+        } else {
+            $wpdb->update(
+                $table,
+                ['eligibility_status' => 'not_applicable', 'updated_at' => current_time('mysql')],
+                ['submission_id' => (int) $submission_id]
+            );
+            $action_html = '<p style="color:#64748b;font-size:14px;line-height:1.6;margin:24px 0 0;">'
+                . 'Insurance on file: <strong>' . esc_html($row->insurance_carrier ?: 'not provided') . '</strong> — outside the two carriers currently tracked for the referral program, so no eligibility check is needed.</p>';
+        }
+
+        $subject = sprintf('[%s] Referral validated — %s', $site, $patient_name !== '' ? $patient_name : 'New referral');
+        $message = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f4f7fa;">'
+            . '<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;"><tr><td align="center">'
+            . '<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">'
+            . '<tr><td style="background:linear-gradient(135deg,#0A3D62 0%,#2980b9 100%);padding:28px 32px;text-align:center;">'
+            . '<h1 style="color:#fff;margin:0;font-size:22px;">' . esc_html($site) . '</h1>'
+            . '<p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:14px;">Referral validated by provider</p></td></tr>'
+            . '<tr><td style="padding:32px;">'
+            . '<p style="color:#334155;font-size:16px;line-height:1.6;margin:0 0 8px;"><strong>Patient:</strong> ' . esc_html($patient_name !== '' ? $patient_name : 'n/a') . '</p>'
+            . '<p style="color:#334155;font-size:16px;line-height:1.6;margin:0 0 8px;"><strong>Referring provider:</strong> ' . esc_html($row->provider_name) . ($row->provider_practice ? ' (' . esc_html($row->provider_practice) . ')' : '') . '</p>'
+            . '<p style="color:#334155;font-size:16px;line-height:1.6;margin:0 0 8px;"><strong>Provider contact:</strong> ' . esc_html($row->provider_email) . ($row->provider_phone ? ' / ' . esc_html($row->provider_phone) : '') . '</p>'
+            . '<p style="color:#334155;font-size:16px;line-height:1.6;margin:0 0 8px;"><strong>Reason:</strong> ' . esc_html($row->reason) . '</p>'
+            . ($row->notes ? '<p style="color:#334155;font-size:16px;line-height:1.6;margin:0 0 8px;"><strong>Notes:</strong> ' . esc_html($row->notes) . '</p>' : '')
+            . $action_html
+            . '<p style="color:#94a3b8;font-size:12px;line-height:1.5;margin:28px 0 0;">Full record: <a href="' . esc_url(home_url('/portal-referrals/')) . '" style="color:#2980b9;">' . esc_html(home_url('/portal-referrals/')) . '</a></p>'
+            . '</td></tr></table></td></tr></table></body></html>';
+
+        $from_email = mmla_portal_outbound_from_email();
+        $headers = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: Mobile Medical LA Portal <' . $from_email . '>',
+            'Reply-To: ' . $from_email,
+        ];
+
+        $sent = wp_mail($admin_email, $subject, $message, $headers);
+        error_log('[Portal] Referral admin notification ' . ($sent ? 'sent' : 'FAILED') . ' for submission ' . (int) $submission_id);
+        return (bool) $sent;
     }
 }
 
@@ -2493,7 +2648,68 @@ function mmla_handle_referral_validation_request() {
         exit;
     }
 
+    if (function_exists('mmla_send_referral_admin_notification_email')) {
+        mmla_send_referral_admin_notification_email($sid);
+    }
+
     wp_safe_redirect(home_url('/?referral_validated=1'));
+    exit;
+}
+
+add_action('init', 'mmla_handle_referral_eligibility_decision_request', 5);
+
+function mmla_handle_referral_eligibility_decision_request() {
+    if (!isset($_GET['action']) || $_GET['action'] !== 'referral_eligibility') {
+        return;
+    }
+
+    $sid = absint($_GET['sid'] ?? 0);
+    $token = isset($_GET['token']) ? sanitize_text_field(wp_unslash((string) $_GET['token'])) : '';
+    $decision = isset($_GET['decision']) ? sanitize_text_field($_GET['decision']) : '';
+
+    if ($sid < 1 || $token === '' || !in_array($decision, ['eligible', 'not_eligible'], true)) {
+        wp_safe_redirect(home_url('/?referral_error=invalid_link'));
+        exit;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'referral_submissions';
+    $hash = hash('sha256', $token);
+
+    $row = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT submission_id, eligibility_status, eligibility_token FROM `{$table}` WHERE submission_id = %d LIMIT 1",
+            $sid
+        )
+    );
+
+    if (!$row || empty($row->eligibility_token) || !hash_equals((string) $row->eligibility_token, $hash)) {
+        error_log('[Portal] referral_eligibility: missing row or token mismatch sid=' . $sid);
+        wp_safe_redirect(home_url('/?referral_error=invalid_token'));
+        exit;
+    }
+
+    if ($row->eligibility_status !== 'pending_review') {
+        wp_safe_redirect(home_url('/?referral_msg=eligibility_already_set'));
+        exit;
+    }
+
+    $updated = $wpdb->update(
+        $table,
+        [
+            'eligibility_status' => $decision,
+            'eligibility_token'  => null,
+            'updated_at'         => current_time('mysql'),
+        ],
+        ['submission_id' => (int) $sid, 'eligibility_status' => 'pending_review']
+    );
+
+    if ($updated === false || (int) $updated === 0) {
+        wp_safe_redirect(home_url('/?referral_msg=eligibility_already_set'));
+        exit;
+    }
+
+    wp_safe_redirect(home_url('/?referral_eligibility_set=' . $decision));
     exit;
 }
 
