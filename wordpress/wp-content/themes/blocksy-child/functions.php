@@ -398,6 +398,35 @@ add_action('phpmailer_init', function ($phpmailer) {
     }
 }, 5, 1);
 
+/**
+ * Every HTML email this site sends (referral confirmations, admin
+ * notifications, portal registration, etc.) was HTML-only — no plain-text
+ * MIME part at all. That's a well-documented spam signal on its own
+ * (multipart/alternative is what a normal mail client produces; HTML-only
+ * is what a lot of phishing/spam tooling produces), and matches exactly
+ * what we saw testing referral delivery to nyef40mmla@gmail.com: plain-text
+ * WP core emails (e.g. "Admin Email Changed") reached it fine, while every
+ * styled-HTML-button referral email to that same address never arrived.
+ * Auto-derive a plain-text AltBody from the HTML body for every outgoing
+ * email site-wide rather than hand-writing one per call site.
+ */
+add_action('phpmailer_init', function ($phpmailer) {
+    if (!is_object($phpmailer)) {
+        return;
+    }
+    if ($phpmailer->ContentType !== 'text/html' || $phpmailer->Body === '') {
+        return;
+    }
+    if (!empty($phpmailer->AltBody)) {
+        return;
+    }
+    $text = preg_replace('/<br\s*\/?>/i', "\n", $phpmailer->Body);
+    $text = preg_replace('/<\/(p|div|tr|h[1-6])>/i', "\n\n", $text);
+    $text = wp_strip_all_tags($text);
+    $text = preg_replace("/\n{3,}/", "\n\n", $text);
+    $phpmailer->AltBody = trim($text);
+}, 20, 1);
+
 // Footer copyright: replace Blocksy's default "WordPress Theme by {theme_author}" (which
 // resolved to the child theme's declared Author, "MMLA", in style.css) with the site's own
 // copyright plus a developer credit. Using the documented filter rather than a Customizer
