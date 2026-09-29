@@ -404,7 +404,7 @@ add_action('phpmailer_init', function ($phpmailer) {
 // value, since no Customizer value was ever saved for this — Blocksy was falling back to its
 // built-in default the whole time.
 add_filter('blocksy:footer:copyright:value', function () {
-    return 'Copyright &copy; {current_year} Mobile Medical LA. Site by nyef40';
+    return '&copy; {current_year} Mobile Medical LA | Site by nyef40';
 });
 
 // Disable comments and pingbacks sitewide (spam reduction; complements Settings → Discussion).
