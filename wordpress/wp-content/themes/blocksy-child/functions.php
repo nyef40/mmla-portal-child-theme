@@ -1759,6 +1759,10 @@ add_action('template_redirect', function() {
   </div>
 </div>
 HTML;
+        // Nowdoc above hardcodes the production domain for readability; swap
+        // it for the current site's own domain so dev links stay on dev
+        // instead of bouncing every visitor to production.
+        $home_teaser_html = str_replace('https://mobilemedicalla.com', home_url(), $home_teaser_html);
 
         $about_intro_html = <<<'HTML'
 <div class="mmla-about-intro">
@@ -1795,6 +1799,7 @@ HTML;
   </div>
 </div>
 HTML;
+        $apart_html = str_replace('https://mobilemedicalla.com', home_url(), $apart_html);
 
         $coord_html = <<<'HTML'
 <div class="mmla-coord-block">
@@ -1803,6 +1808,7 @@ HTML;
   <a class="mmla-coord-cta" href="https://mobilemedicalla.com/our-technology/">See How We Manage Your Care</a>
 </div>
 HTML;
+        $coord_html = str_replace('https://mobilemedicalla.com', home_url(), $coord_html);
         ?>
         <script>
         (function () {
