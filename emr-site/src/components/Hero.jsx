@@ -31,7 +31,7 @@ export default function Hero() {
 
         <div className="cta-row">
           <a className="btn solid" href="#modules">See what the system actually does →</a>
-          <a className="btn ghost" href="https://mobilemedicalla.com/portal-referrals/">Refer a Patient</a>
+          <a className="btn ghost" href="/portal-referrals/">Refer a Patient</a>
         </div>
       </div>
 
