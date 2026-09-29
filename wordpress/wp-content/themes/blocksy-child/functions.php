@@ -2421,6 +2421,28 @@ if (!function_exists('mmla_referral_eligibility_action_url')) {
     }
 }
 
+if (!function_exists('mmla_referral_admin_notification_email')) {
+    /**
+     * Recipient for referral admin notifications — intentionally NOT the
+     * site's admin_email option (nyef40mmla@gmail.com), which was confirmed
+     * (Sep 27-29 2026 testing) to never actually receive mail sent through
+     * this site's Gmail-API relay despite wp_mail() reporting success every
+     * time, including a bare non-referral diagnostic email sent directly.
+     * The Gmail API mailer reports success once a message is accepted into
+     * Gmail's own send queue, not once it's actually delivered, so a
+     * downstream suppression on the recipient side is invisible to
+     * wp_mail()'s return value. Kept as its own function (not reusing
+     * admin_email) since that option also drives core WP notices like
+     * password resets — don't want to change those just to fix this.
+     */
+    function mmla_referral_admin_notification_email() {
+        if (defined('MMLA_REFERRAL_ADMIN_EMAIL') && is_email(MMLA_REFERRAL_ADMIN_EMAIL)) {
+            return MMLA_REFERRAL_ADMIN_EMAIL;
+        }
+        return 'nyef40@gmail.com';
+    }
+}
+
 if (!function_exists('mmla_send_referral_admin_notification_email')) {
     /**
      * Fires once a referral is provider-validated. Always tells admin a
@@ -2446,7 +2468,7 @@ if (!function_exists('mmla_send_referral_admin_notification_email')) {
         }
 
         $patient_name = function_exists('try_decrypt_field') ? try_decrypt_field($row->patient_name) : $row->patient_name;
-        $admin_email = get_option('admin_email');
+        $admin_email = mmla_referral_admin_notification_email();
         if (empty($admin_email) || !is_email($admin_email)) {
             error_log('[Portal] Referral admin notification skipped: invalid admin_email');
             return false;
