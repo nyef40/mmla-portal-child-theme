@@ -627,7 +627,7 @@ function is_portal_page() {
  */
 function mmla_is_main_site_bar_page() {
     if (is_admin() || is_portal_page()) return false;
-    return is_front_page() || is_page(['our-services', 'about-us', 'ivig-news', 'resources2']);
+    return is_front_page() || is_page(['our-services', 'about-us', 'ivig-news', 'industry-news', 'videos', 'resources2']);
 }
 
 /**
@@ -772,7 +772,7 @@ add_action('template_redirect', function() {
 
     // Main-site pages whose Elementor content opens with a redundant page-title
     // section (it duplicates the unified bar's title) — hide just that section.
-    $hide_title_hero = $is_main_bar && is_page(['our-services', 'about-us', 'ivig-news', 'resources2']);
+    $hide_title_hero = $is_main_bar && is_page(['our-services', 'about-us', 'ivig-news', 'industry-news', 'videos', 'resources2']);
 
     // Add styles to head
     add_action('wp_head', function() use ($is_portal, $is_main_bar, $hide_title_hero) {
@@ -1624,8 +1624,8 @@ add_action('template_redirect', function() {
                                 <a href="<?php echo esc_url(home_url('/')); ?>" class="<?php echo is_front_page() ? 'active' : ''; ?>">Home</a>
                                 <a href="<?php echo esc_url(home_url('/our-services/')); ?>" class="<?php echo $current === 'our-services' ? 'active' : ''; ?>">Our Services</a>
                                 <a href="<?php echo esc_url(home_url('/about-us/')); ?>" class="<?php echo $current === 'about-us' ? 'active' : ''; ?>">About Us</a>
-                                <a href="<?php echo esc_url(home_url('/ivig-news/')); ?>" class="<?php echo $current === 'ivig-news' ? 'active' : ''; ?>">IVIG News</a>
-                                <a href="<?php echo esc_url(home_url('/resources2/')); ?>" class="<?php echo $current === 'resources2' ? 'active' : ''; ?>">Resources</a>
+                                <a href="<?php echo esc_url(home_url('/industry-news/')); ?>" class="<?php echo $current === 'industry-news' ? 'active' : ''; ?>">Industry News</a>
+                                <a href="<?php echo esc_url(home_url('/videos/')); ?>" class="<?php echo $current === 'videos' ? 'active' : ''; ?>">Resources</a>
                             </nav>
                         <?php endif; ?>
                     </div>
