@@ -41,7 +41,11 @@
 .mmla-news-briefing a:hover { color: var(--mn-sky); }
 .mmla-news-briefing small { display: block; color: var(--mn-muted); }
 .mmla-news-area h2 { font-size: 22px; margin: 34px 0 14px; border-left: 5px solid var(--mn-red); padding-left: 12px; }
-.mmla-news-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+/* Always three equal columns, so each row spans the full width of the title bar and the
+   briefing (a wide screen would otherwise make room for a fourth, empty column). */
+.mmla-news-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+@media (max-width: 900px) { .mmla-news-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .mmla-news-grid { grid-template-columns: minmax(0, 1fr); } }
 .mmla-news-card {
   background: #fff; border: 1px solid var(--mn-line); border-radius: 14px; overflow: hidden; display: flex;
   flex-direction: column; box-shadow: 0 4px 16px rgba(10, 61, 98, .06); transition: transform .15s;
@@ -60,7 +64,11 @@
 .mmla-news-body h3 a:hover { color: var(--mn-sky); }
 .mmla-news-body p { margin: 0; color: var(--mn-muted); font-size: 15px; flex: 1; }
 .mmla-news-more { color: var(--mn-sky); font-weight: 600; text-decoration: none; font-size: 14px; }
-.mmla-news-note { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--mn-line); color: var(--mn-muted); font-size: 13px; }
+/* The page's footer: the title bar's colours, the same width as everything above. */
+.mmla-news-note {
+  margin: 36px 0 0; padding: 20px 32px; border-radius: 16px; color: #fff; font-size: 14px;
+  background: linear-gradient(135deg, var(--mn-navy), var(--mn-blue));
+}
 .mmla-news section[hidden] { display: none; }
 
 /* Videos ([mmla_videos]) */
